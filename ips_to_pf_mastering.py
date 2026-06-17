@@ -1,0 +1,214 @@
+import sys
+import logging
+from contextlib import contextmanager 
+import yaml
+# Dummy place holders for global imports
+pf = None 
+pftextoutputs = None
+bru = None 
+
+logger = logging.getLogger(__name__)
+
+# logging.basicConfig(level=logging.DEBUG)
+std_out_handler = logging.StreamHandler(sys.stdout)
+std_out_handler.setLevel(logging.DEBUG)
+std_out_handler.setFormatter(
+    logging.Formatter("%(asctime)s: %(filename)s: %(lineno)d:\t%(message)s")
+)
+logger = logging.getLogger(__name__)
+# TODO remove std out logging once email logging is working
+logger.setLevel(logging.DEBUG)
+logger.addHandler(std_out_handler)
+
+root_logger = logging.getLogger()
+root_logger.setLevel(logging.DEBUG)
+root_logger.addHandler(std_out_handler)
+
+def run_main():
+    yaml_ini_file = r"C:\LocalData\BatchStudy\pf_login.yaml"
+    get_yaml_python_pf_dir_and_imports(yaml_ini_file)
+
+    with produce_secured_app_instance(yaml_ini_file, logger=logger) as app:
+    
+        if app is None:
+            print("Instance is NONE")
+            return
+        print("Secure connection created")  # noqa
+        with pftextoutputs.PowerFactoryLogging(
+            pf_app=app,
+            add_handler=True,
+            handler_level=logging.DEBUG,
+            logger_to_use=logger,
+            formatter=pftextoutputs.PFFormatter(
+                "%(module)s: Line: %(lineno)d: %(message)s"
+            ),
+        ) as pflogger:
+            main(app)
+
+
+def main(app):
+    app.ClearOutputWindow()
+    all_projects = derive_latest_versions(app)
+    app.ReloadProfile()
+    bru.main(app, all_projects)
+    change_permissions(app, all_projects)
+
+
+def change_permissions(app, all_projects):
+    """Share the project to the Ergon Publisher"""
+    cur_user = app.GetCurrentUser()
+    user_group = cur_user.GetAttribute("fold_id").SearchObject(
+        "Cnf\Groups\ErgonPublisher.IntGroup"
+    )
+    app.SetWriteCacheEnabled(1)
+    for project in all_projects:
+        logger.info(project)
+        project.SetAttributeLength("share_g", 1)
+        len_share = project.GetAttributeLength("share_g")
+        logger.info(f"Length = {len_share}")
+        project.share_g = [user_group]
+        logger.info(project.share_g)
+        project.SetAttributeLength("share_a", 1)
+        project.share_a = [3]
+    app.SetWriteCacheEnabled(0)
+
+
+def derive_latest_versions(app):
+    """The master folder is located under the publisher. The IPS to PF will only
+    update models whos parent folder is:
+        - Northern
+        - Southern
+        - SEQ Models
+    This function will derive the latest version of all projects under these folders.
+    """
+    app.SetWriteCacheEnabled(1)
+    app.EchoOff()
+    cur_user = app.GetCurrentUser()
+    northern_fold = cur_user.GetAttribute("fold_id").SearchObject(
+        "Publisher\\MasterProjects\\Regional Models\\Northern.IntFolder"
+    )
+    southern_fold = cur_user.GetAttribute("fold_id").SearchObject(
+        "Publisher\\MasterProjects\\Regional Models\\Southern.IntFolder"
+    )
+    seq_fold = cur_user.GetAttribute("fold_id").SearchObject(
+        "Publisher\\MasterProjects\\SEQ Models"
+    )
+    for folder in cur_user.GetContents("*.IntFolder"):
+        if folder.loc_name == "Ready to Master":
+            folder.Delete()
+            break
+    derive_location = cur_user.CreateObject("IntFolder", "Ready to Master")
+    master_projects = []
+    for folder in [northern_fold, southern_fold, seq_fold]:
+        master_projects += folder.GetContents("*.IntPrj")
+    projects = []
+    for i, project in enumerate(master_projects):
+        if i % 10 == 0:
+            print(f"{i} projects have been derived")
+        prjt_ver = project.GetLatestVersion(0)
+        if not prjt_ver:
+            print(f"project - {project} does not have a version")
+            continue
+        projects.append(
+            prjt_ver.CreateDerivedProject(f"{project.loc_name}", derive_location)
+        )
+    app.EchoOn()
+    app.WriteChangesToDb()
+    app.SetWriteCacheEnabled(0)
+    return projects
+
+# Luke's old code
+# def produce_secured_app_instance():
+#     """Create an instance of Powerfactory"""
+#     yaml_ini_file = r"C:\LocalData\BatchStudy\pf_login.yaml"
+#     d = get_yaml_d(yaml_ini_file)
+#     user = d["user"]
+#     print(user)
+#     password = d["password"]
+#     print(password)
+#     file_dir = d["file_dir"]
+#     print(file_dir)
+#     ini_file = d["ini_file"]
+#     print(ini_file)
+#     call_function = f'"/ini:{file_dir}\\{ini_file}"'
+#     app = pf.GetApplication(user, password, call_function)
+#     return app
+
+
+def get_yaml_d(yaml_ini_file):
+    """Get the Yaml Dictionary"""
+    with open(yaml_ini_file) as yaml_f:
+        d = yaml.safe_load(yaml_f)
+    return d
+
+
+def get_key_from_yaml(d, key, yaml_ini_file):
+    """Get a key from a loaded yaml file"""
+    try:
+        value = d[key]
+    except KeyError:
+        logging.error(f"No {key} attribute in {yaml_ini_file}")
+        raise
+    return value
+
+
+def get_yaml_python_pf_dir_and_imports(yaml_ini_file):
+    d = get_yaml_d(yaml_ini_file)
+    python_import_dir = get_key_from_yaml(d, "pf_import_dir", yaml_ini_file)
+ 
+    sys.path.append(python_import_dir)
+    root_logger.debug(python_import_dir)
+    logger.info(f"Import python_import_dir: {python_import_dir}")
+    global pf
+    import powerfactory as pf
+ 
+    import_required_pf_modules()
+
+
+@contextmanager
+def produce_secured_app_instance(yaml_ini_file, logger=logger):
+    d = get_yaml_d(yaml_ini_file)
+ 
+    user = get_key_from_yaml(d, "user", yaml_ini_file)
+    password = get_key_from_yaml(d, "password", yaml_ini_file)
+    file_dir = get_key_from_yaml(d, "file_dir", yaml_ini_file)
+    ini_file = get_key_from_yaml(d, "ini_file", yaml_ini_file)
+ 
+    call_function = f'/ini "{file_dir}\\{ini_file}"'
+ 
+    logger.info(f"Call function is {call_function}")
+    logger.info(f"user is {user}")
+ 
+    try:
+        app = pf.GetApplicationExt(user, password, call_function)
+    except pf.ExitError:
+        logger.error("Unable to get application")
+        root_logger.error("Unable to get application")
+        root_logger.exception("Unable to get application")
+        raise
+ 
+    logger.info(f"Opened {app}")
+ 
+    yield app
+ 
+    active_project = app.GetActiveProject()
+    if active_project:
+        active_project.Deactivate()
+
+
+def import_required_pf_modules():
+    # Import the powerfactory model to all the script to run external
+    sys.path.append(r"C:\Program Files\DIgSILENT\PowerFactory 2021 SP4\Python\3.9")
+    global pf
+    import powerfactory as pf
+
+    sys.path.append(r"\\Ecasd01\WksMgmt\PowerFactory\Scripts\pfTextOutputs")
+    global pftextoutputs 
+    import pftextoutputs
+
+    global bru
+    import batch_relay_update as bru
+
+
+if __name__ == "__main__":
+    run_main()

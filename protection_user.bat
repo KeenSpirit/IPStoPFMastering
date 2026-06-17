@@ -1,0 +1,2 @@
+python batch_study_external.py
+pause
