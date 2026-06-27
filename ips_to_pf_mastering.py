@@ -5,7 +5,10 @@ import yaml
 # Dummy place holders for global imports
 pf = None 
 pftextoutputs = None
-bru = None 
+bru = None
+# PowerFactory runtime + helper module locations (single source of truth)
+PF_PYTHON_DIR = r"C:\Program Files\DIgSILENT\PowerFactory 2021 SP4\Python\3.9"
+PF_TEXT_OUTPUTS_DIR = r"\\Ecasd01\WksMgmt\PowerFactory\Scripts\pfTextOutputs"
 
 logger = logging.getLogger(__name__)
 
@@ -26,10 +29,10 @@ root_logger.addHandler(std_out_handler)
 
 def run_main():
     yaml_ini_file = r"C:\LocalData\BatchStudy\pf_login.yaml"
-    get_yaml_python_pf_dir_and_imports(yaml_ini_file)
+    d = get_yaml_d(yaml_ini_file)
+    import_required_pf_modules()
 
-    with produce_secured_app_instance(yaml_ini_file, logger=logger) as app:
-    
+    with produce_secured_app_instance(d, yaml_ini_file, logger=logger) as app:
         if app is None:
             print("Instance is NONE")
             return
@@ -48,7 +51,7 @@ def run_main():
 
 def main(app):
     app.ClearOutputWindow()
-    all_projects = derive_latest_versions(app)
+    all_projects = (derive_latest_versions(app))
     app.ReloadProfile()
     bru.main(app, all_projects)
     change_permissions(app, all_projects)
@@ -117,23 +120,6 @@ def derive_latest_versions(app):
     app.SetWriteCacheEnabled(0)
     return projects
 
-# Luke's old code
-# def produce_secured_app_instance():
-#     """Create an instance of Powerfactory"""
-#     yaml_ini_file = r"C:\LocalData\BatchStudy\pf_login.yaml"
-#     d = get_yaml_d(yaml_ini_file)
-#     user = d["user"]
-#     print(user)
-#     password = d["password"]
-#     print(password)
-#     file_dir = d["file_dir"]
-#     print(file_dir)
-#     ini_file = d["ini_file"]
-#     print(ini_file)
-#     call_function = f'"/ini:{file_dir}\\{ini_file}"'
-#     app = pf.GetApplication(user, password, call_function)
-#     return app
-
 
 def get_yaml_d(yaml_ini_file):
     """Get the Yaml Dictionary"""
@@ -152,28 +138,13 @@ def get_key_from_yaml(d, key, yaml_ini_file):
     return value
 
 
-def get_yaml_python_pf_dir_and_imports(yaml_ini_file):
-    d = get_yaml_d(yaml_ini_file)
-    python_import_dir = get_key_from_yaml(d, "pf_import_dir", yaml_ini_file)
- 
-    sys.path.append(python_import_dir)
-    root_logger.debug(python_import_dir)
-    logger.info(f"Import python_import_dir: {python_import_dir}")
-    global pf
-    import powerfactory as pf
- 
-    import_required_pf_modules()
-
-
 @contextmanager
-def produce_secured_app_instance(yaml_ini_file, logger=logger):
-    d = get_yaml_d(yaml_ini_file)
- 
+def produce_secured_app_instance(d, yaml_ini_file, logger=logger):
     user = get_key_from_yaml(d, "user", yaml_ini_file)
     password = get_key_from_yaml(d, "password", yaml_ini_file)
     file_dir = get_key_from_yaml(d, "file_dir", yaml_ini_file)
     ini_file = get_key_from_yaml(d, "ini_file", yaml_ini_file)
- 
+
     call_function = f'/ini "{file_dir}\\{ini_file}"'
  
     logger.info(f"Call function is {call_function}")
@@ -188,25 +159,31 @@ def produce_secured_app_instance(yaml_ini_file, logger=logger):
         raise
  
     logger.info(f"Opened {app}")
- 
-    yield app
- 
-    active_project = app.GetActiveProject()
-    if active_project:
-        active_project.Deactivate()
+
+    try:
+        yield app
+    finally:
+        active_project = app.GetActiveProject()
+        if active_project:
+            active_project.Deactivate()
 
 
 def import_required_pf_modules():
-    # Import the powerfactory model to all the script to run external
-    sys.path.append(r"C:\Program Files\DIgSILENT\PowerFactory 2021 SP4\Python\3.9")
-    global pf
+    """Configure sys.path and import the PowerFactory runtime + helper modules.
+
+    Deferred (not imported at module top) so this module stays importable on
+    machines without PowerFactory. Must run once before any code touches `pf`.
+    """
+    global pf, pftextoutputs, bru
+
+    if PF_PYTHON_DIR not in sys.path:
+        sys.path.append(PF_PYTHON_DIR)
     import powerfactory as pf
 
-    sys.path.append(r"\\Ecasd01\WksMgmt\PowerFactory\Scripts\pfTextOutputs")
-    global pftextoutputs 
+    if PF_TEXT_OUTPUTS_DIR not in sys.path:
+        sys.path.append(PF_TEXT_OUTPUTS_DIR)
     import pftextoutputs
 
-    global bru
     import batch_relay_update as bru
 
 

@@ -2,8 +2,11 @@ import powerfactory as pf
 import time
 import sys
 
-sys.path.append(r"\\ecasd01\WksMgmt\PowerFactory\Scripts\IPSProtectionDeviceSettings")
-import ips_to_pf
+# NEW ips_to_pf_subtrans package root (the directory that contains main.py,
+# ips_data/, config/, mapping/, ui/ as siblings). CONFIRM this path against the
+# deployed location of the merged package before running.
+sys.path.append(r"\\ecasd01\WksMgmt\PowerFactory\ScriptsDEV\ips_to_pf_subtrans")
+import main as ips_to_pf_subtrans
 
 
 def main(app=None, all_projects=None):
@@ -27,7 +30,7 @@ def main(app=None, all_projects=None):
                 project, i + 1, len(all_projects)
             )
         )
-        # Deactivate TRY and EXEPT when PF problem is fixed
+        # Deactivate TRY and EXCEPT when PF problem is fixed
         try:
             # test each file to see if it opens
             project.Activate()
@@ -61,7 +64,7 @@ def main(app=None, all_projects=None):
         time.sleep(5)
         net_mod = app.GetProjectFolder("netmod")
         app.ClearOutputWindow()
-        ips_to_pf.main(app, True)
+        ips_to_pf_subtrans.main(app, True)
         new_version = create_version(project, f'{time.strftime("%Y%m%d")} IPS Import')
     project.Deactivate()
 
@@ -95,4 +98,3 @@ def all_relevant_objects(folders, type_of_obj, objects=None):
 
 if __name__ == "__main__":
     main()
-
