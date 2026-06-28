@@ -23,8 +23,8 @@ import xlsxwriter
 
 
 def main():
-    """This program is used to continously search for projects that require
-    studies that need a special licience"""
+    """This program is used to continuously search for projects that require
+    studies that need a special licence"""
     start_time = time.strftime("%H:%M:%S")
     app = produce_secured_app_instance()
     #app = pf.GetApplication()

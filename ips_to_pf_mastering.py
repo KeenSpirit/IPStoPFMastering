@@ -1,5 +1,7 @@
 import sys
+import os
 import logging
+from pathlib import Path
 from contextlib import contextmanager 
 import yaml
 # Dummy place holders for global imports
@@ -7,7 +9,7 @@ pf = None
 pftextoutputs = None
 bru = None
 # PowerFactory runtime + helper module locations (single source of truth)
-PF_PYTHON_DIR = r"C:\Program Files\DIgSILENT\PowerFactory 2021 SP4\Python\3.9"
+PF_PYTHON_DIR = r"C:\Program Files\DIgSILENT\PowerFactory 2025 SP3\Python\3.13"
 PF_TEXT_OUTPUTS_DIR = r"\\Ecasd01\WksMgmt\PowerFactory\Scripts\pfTextOutputs"
 
 logger = logging.getLogger(__name__)
@@ -28,7 +30,7 @@ root_logger.setLevel(logging.DEBUG)
 root_logger.addHandler(std_out_handler)
 
 def run_main():
-    yaml_ini_file = r"C:\LocalData\BatchStudy\pf_login.yaml"
+    yaml_ini_file = r"Y:\PROTECTION\STAFF\Dan Park\PowerFactory\Dan script development\IPStoPFMastering\pf_login.yaml"
     d = get_yaml_d(yaml_ini_file)
     import_required_pf_modules()
 
@@ -50,8 +52,14 @@ def run_main():
 
 
 def main(app):
+    """ Pilot projects:
+    Atherton
+    Mossman
+    Postmans Ridge
+    Clayfield
+    """
     app.ClearOutputWindow()
-    all_projects = (derive_latest_versions(app))
+    all_projects = (derive_latest_versions(app, pilot="Nudgee"))
     app.ReloadProfile()
     bru.main(app, all_projects)
     change_permissions(app, all_projects)
@@ -59,30 +67,32 @@ def main(app):
 
 def change_permissions(app, all_projects):
     """Share the project to the Ergon Publisher"""
-    cur_user = app.GetCurrentUser()
-    user_group = cur_user.GetAttribute("fold_id").SearchObject(
-        "Cnf\Groups\ErgonPublisher.IntGroup"
-    )
-    app.SetWriteCacheEnabled(1)
-    for project in all_projects:
-        logger.info(project)
-        project.SetAttributeLength("share_g", 1)
-        len_share = project.GetAttributeLength("share_g")
-        logger.info(f"Length = {len_share}")
-        project.share_g = [user_group]
-        logger.info(project.share_g)
-        project.SetAttributeLength("share_a", 1)
-        project.share_a = [3]
-    app.SetWriteCacheEnabled(0)
+    pass
+    # cur_user = app.GetCurrentUser()
+    # user_group = cur_user.GetAttribute("fold_id").SearchObject(
+    #     "Cnf\Groups\ErgonPublisher.IntGroup"
+    # )
+    # app.SetWriteCacheEnabled(1)
+    # for project in all_projects:
+    #     logger.info(project)
+    #     project.SetAttributeLength("share_g", 1)
+    #     len_share = project.GetAttributeLength("share_g")
+    #     logger.info(f"Length = {len_share}")
+    #     project.share_g = [user_group]
+    #     logger.info(project.share_g)
+    #     project.SetAttributeLength("share_a", 1)
+    #     project.share_a = [3]
+    # app.SetWriteCacheEnabled(0)
 
 
-def derive_latest_versions(app):
+def derive_latest_versions(app, pilot=False):
     """The master folder is located under the publisher. The IPS to PF will only
     update models whos parent folder is:
         - Northern
         - Southern
         - SEQ Models
     This function will derive the latest version of all projects under these folders.
+    To test on a single project, the name of the project is passed as pilot (str).
     """
     app.SetWriteCacheEnabled(1)
     app.EchoOff()
@@ -104,6 +114,8 @@ def derive_latest_versions(app):
     master_projects = []
     for folder in [northern_fold, southern_fold, seq_fold]:
         master_projects += folder.GetContents("*.IntPrj")
+    if pilot:
+        master_projects = [project for project in master_projects if project.loc_name == pilot]
     projects = []
     for i, project in enumerate(master_projects):
         if i % 10 == 0:
@@ -119,6 +131,16 @@ def derive_latest_versions(app):
     app.WriteChangesToDb()
     app.SetWriteCacheEnabled(0)
     return projects
+
+
+def derive_test_project(app):
+    """ Pilot projects:
+    Atherton
+    Mossman
+    Postmans Ridge
+    Clayfield
+    """
+
 
 
 def get_yaml_d(yaml_ini_file):
