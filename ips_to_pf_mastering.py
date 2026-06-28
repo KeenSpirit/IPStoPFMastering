@@ -10,6 +10,7 @@ pftextoutputs = None
 bru = None
 # PowerFactory runtime + helper module locations (single source of truth)
 PF_PYTHON_DIR = r"C:\Program Files\DIgSILENT\PowerFactory 2025 SP3\Python\3.13"
+PF_INSTALL_DIR = str(Path(PF_PYTHON_DIR).parents[1])  # ...\PowerFactory 2025 SP3
 PF_TEXT_OUTPUTS_DIR = r"\\Ecasd01\WksMgmt\PowerFactory\Scripts\pfTextOutputs"
 
 logger = logging.getLogger(__name__)
@@ -197,6 +198,12 @@ def import_required_pf_modules():
     machines without PowerFactory. Must run once before any code touches `pf`.
     """
     global pf, pftextoutputs, bru
+
+    # powerfactory.pyd depends on the PF engine DLLs in PF_INSTALL_DIR. On
+    # Python 3.8+ these are NOT resolved via PATH, so register the directory
+    # explicitly before importing — otherwise the import fails with
+    # "DLL load failed ... The specified module could not be found".
+    os.add_dll_directory(PF_INSTALL_DIR)
 
     if PF_PYTHON_DIR not in sys.path:
         sys.path.append(PF_PYTHON_DIR)
