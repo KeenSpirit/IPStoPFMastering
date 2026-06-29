@@ -1,7 +1,7 @@
 IPSDataTransferMastering
 ===============
 
-This script is used by the publisher to transfer data from IPS to PowerFactory on a weekly bases. It will use the general IPS to PF script to do the transfer.
+This script is used by the publisher to transfer data from IPS to PowerFactory on a weekly basis. It will use the general IPS to PF script to do the transfer.
 
 Open a virtual machine, I would recommend SOEV01948. The reason for this is because it has been set up to complete this task. This includes:
 •	C:\LocalData\BatchStudy\pf_login.yaml 
@@ -27,11 +27,11 @@ This script imports all these files plus some additional sheets. You can either 
 
 You should have also mapped where you want the PF_RELAY_DATA.xlsx file to be saved.
 
-Once you have corrected all of the file locations then you are ready to run the script.
+Once you have corrected all the file locations then you are ready to run the script.
 
 The main tab is the Mapping Issues tab. This tab contains information about what work is required. Effectively if there is a setting IPS that needs to be transferred to PowerFactory but it doesn’t know how to do it.
 
-The RELAY_PATTERN column is the the Relay Parameter Pattern in IPS for the setting node.
+The RELAY_PATTERN column is the Relay Parameter Pattern in IPS for the setting node.
 PATTERN_COUNT is how many settings in IPS has this Relay Parameter Pattern
 EXAMPLE_PLANT_NUMBER is used during the development of the relay mapping file.
 EXAMPLE_PROJECT is the project that contains this device. Useful for finding th device during development

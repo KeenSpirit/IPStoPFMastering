@@ -9,7 +9,7 @@ pf = None
 pftextoutputs = None
 bru = None
 # PowerFactory runtime + helper module locations (single source of truth)
-PF_PYTHON_DIR = r"C:\Program Files\DIgSILENT\PowerFactory 2025 SP3\Python\3.13"
+PF_PYTHON_DIR = r"C:\Program Files\DIgSILENT\PowerFactory 2025 SP3\Python\3.12"
 PF_INSTALL_DIR = str(Path(PF_PYTHON_DIR).parents[1])  # ...\PowerFactory 2025 SP3
 PF_TEXT_OUTPUTS_DIR = r"\\Ecasd01\WksMgmt\PowerFactory\Scripts\pfTextOutputs"
 
@@ -60,7 +60,7 @@ def main(app):
     Clayfield
     """
     app.ClearOutputWindow()
-    all_projects = (derive_latest_versions(app, pilot="Nudgee"))
+    all_projects = derive_latest_versions(app, pilot="Nudgee")
     app.ReloadProfile()
     bru.main(app, all_projects)
     change_permissions(app, all_projects)

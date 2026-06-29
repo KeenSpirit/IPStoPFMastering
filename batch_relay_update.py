@@ -19,8 +19,8 @@ def main(app=None, all_projects=None):
         projects_folder = current_script.object_to_update
         all_projects = all_relevant_objects([projects_folder], "*.IntPrj")
 
-    """ Try and solve problem with opening projects"""
-    # Try and figure out if we can skip broken sites
+    """ Try to solve problem with opening projects"""
+    # Figure out if we can skip broken sites
     print("Testing files to see if they open")
     project_open = []
     project_didnot_open = []
@@ -63,7 +63,7 @@ def main(app=None, all_projects=None):
         time.sleep(5)
         net_mod = app.GetProjectFolder("netmod")
         app.ClearOutputWindow()
-        ips_to_pf(app, True)
+        ips_to_pf.main(app, True)
         new_version = create_version(project, f'{time.strftime("%Y%m%d")} IPS Import')
     project.Deactivate()
 
