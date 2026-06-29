@@ -1,2 +1,2 @@
 {file_dir: 'C:\Program Files\DIgSILENT\PowerFactory 2025 SP3', ini_file: PowerFactory_PRD.ini,
-  password: P@ssword01, user: dp072}
+  password: {password}, user: {user}}
