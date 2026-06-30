@@ -30,6 +30,11 @@ root_logger = logging.getLogger()
 root_logger.setLevel(logging.DEBUG)
 root_logger.addHandler(std_out_handler)
 
+# Ensure app loggers stay at INFO so their records reach the stdout handler on root
+for name in ("ips_data", "update_powerfactory", "config", "core", "utils", "logging_config"):
+    logging.getLogger(name).setLevel(logging.INFO)
+
+
 def run_main():
     yaml_ini_file = r"Y:\PROTECTION\STAFF\Dan Park\PowerFactory\Dan script development\IPStoPFMastering\pf_login.yaml"
     d = get_yaml_d(yaml_ini_file)
