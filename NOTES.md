@@ -12,11 +12,11 @@ PF_PYTHON_DIR = r"C:\Program Files\DIgSILENT\PowerFactory 2025 SP3\Python\3.12"
 
 Running the script:
 
-In the Command Prompt, navigate to the location of your script:
+In the Command Prompt, navigate to the location of your script. Example command:
 cd /d Y:\PROTECTION\STAFF\Dan Park\PowerFactory\Dan script development\IPStoPFMastering
 
-The /d Is used for switching to a drive letter other than the one you’re currently on.
+The /d is used for switching to a drive letter other than the one you’re currently on.
 
 After the path is updated, type the following:
-python script.py
-Where script is the executable file. 
+python {script}.py
+Where {script} is the executable file. 

@@ -2,12 +2,10 @@ import powerfactory as pf
 import time
 import sys
 
-# NEW ips_to_pf package root (the directory that contains main.py,
-# ips_data/, config/, mapping/, ui/ as siblings). CONFIRM this path against the
-# deployed location of the merged package before running.
 sys.path.append(r"\\ntgcca1\ntdpe\PROTECTION\STAFF\Dan Park\PowerFactory\Dan script development\IPStoPF")
 import main as ips_to_pf
-
+sys.path.append(r"\\ntgcca1\ntdpe\PROTECTION\STAFF\Dan Park\PowerFactory\Dan script development\SystemProtectionAssessment")
+import start
 
 def main(app=None, all_projects=None):
     """Update all relays in a project"""
@@ -65,6 +63,7 @@ def main(app=None, all_projects=None):
         app.ClearOutputWindow()
         ips_to_pf.main(app, True)
         new_version = create_version(project, f'{time.strftime("%Y%m%d")} IPS Import')
+        start.begin(app)
     project.Deactivate()
 
 

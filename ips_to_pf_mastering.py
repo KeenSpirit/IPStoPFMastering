@@ -65,7 +65,7 @@ def main(app):
     Clayfield
     """
     app.ClearOutputWindow()
-    all_projects = derive_latest_versions(app, pilot="Nudgee")
+    all_projects = derive_latest_versions(app, pilot="Algester")
     app.ReloadProfile()
     bru.main(app, all_projects)
     change_permissions(app, all_projects)
