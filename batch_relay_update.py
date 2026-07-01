@@ -6,6 +6,7 @@ sys.path.append(r"\\ntgcca1\ntdpe\PROTECTION\STAFF\Dan Park\PowerFactory\Dan scr
 import main as ips_to_pf
 sys.path.append(r"\\ntgcca1\ntdpe\PROTECTION\STAFF\Dan Park\PowerFactory\Dan script development\SystemProtectionAssessment")
 import start
+import pf_protection_helper as helper
 
 def main(app=None, all_projects=None):
     """Update all relays in a project"""
@@ -63,7 +64,8 @@ def main(app=None, all_projects=None):
         app.ClearOutputWindow()
         ips_to_pf.main(app, True)
         new_version = create_version(project, f'{time.strftime("%Y%m%d")} IPS Import')
-        start.begin(app)
+        with helper.app_manager(app, gui=False) as app:
+            start.begin(app)
     project.Deactivate()
 
 
