@@ -1,8 +1,38 @@
+"""
+IPS to PowerFactory mastering pipeline - scheduled entry point.
+
+This module is the top of a three-repository pipeline that transfers
+protection relay settings from IPS into the PowerFactory master models
+and runs a protection assessment over the result:
+
+    IPStoPFMastering (this repo)
+        ips_to_pf_mastering.py           <- entry point (this module)
+          derive_latest_versions()       derive the latest version of each
+                                         master project into a fresh
+                                         "Ready to Master" folder
+          batch_relay_update.main()      per-project loop:
+            |
+            |-- IPStoPF\\main.py          IPS -> PF settings transfer for
+            |   (ips_to_pf.main)         the active project
+            |
+            |-- create_version()         version the project as the audit
+            |                            record of the import
+            |
+            '-- SystemProtectionAssessment\\start.py
+                (start.begin)            fault level study + conductor
+                                         damage assessment
+          change_permissions()           share derived projects (stubbed)
+
+Designed to run unattended (weekly Windows Task Scheduler) over the full
+master-projects fleet, or a single project in pilot mode. Configuration,
+scheduling, exit codes and failure handling are documented in README.md.
+"""
+
 import sys
 import os
 import logging
 from pathlib import Path
-from contextlib import contextmanager 
+from contextlib import contextmanager
 import yaml
 # Dummy place holders for global imports
 pf = None 
@@ -14,17 +44,14 @@ PF_INSTALL_DIR = str(Path(PF_PYTHON_DIR).parents[1])  # ...\PowerFactory 2025 SP
 PF_TEXT_OUTPUTS_DIR = r"\\Ecasd01\WksMgmt\PowerFactory\Scripts\pfTextOutputs"
 
 logger = logging.getLogger(__name__)
+logger.setLevel(logging.DEBUG)
 
-# logging.basicConfig(level=logging.DEBUG)
+# TODO remove std out logging once email logging is working
 std_out_handler = logging.StreamHandler(sys.stdout)
 std_out_handler.setLevel(logging.DEBUG)
 std_out_handler.setFormatter(
     logging.Formatter("%(asctime)s: %(filename)s: %(lineno)d:\t%(message)s")
 )
-logger = logging.getLogger(__name__)
-# TODO remove std out logging once email logging is working
-logger.setLevel(logging.DEBUG)
-logger.addHandler(std_out_handler)
 
 root_logger = logging.getLogger()
 root_logger.setLevel(logging.DEBUG)
@@ -35,44 +62,95 @@ for name in ("ips_data", "update_powerfactory", "config", "core", "utils", "logg
     logging.getLogger(name).setLevel(logging.INFO)
 
 
-def run_main():
-    yaml_ini_file = r"Y:\PROTECTION\STAFF\Dan Park\PowerFactory\Dan script development\IPStoPFMastering\pf_login.yaml"
-    d = get_yaml_d(yaml_ini_file)
-    import_required_pf_modules()
+# Exit codes consumed by Windows Task Scheduler ("Last Run Result")
+EXIT_SUCCESS = 0          # all projects processed successfully
+EXIT_PARTIAL_FAILURE = 1  # run completed but one or more projects failed
+EXIT_FATAL = 2            # run aborted (no app, no projects, or unhandled error)
 
-    with produce_secured_app_instance(d, yaml_ini_file, logger=logger) as app:
-        if app is None:
-            print("Instance is NONE")
-            return
-        print("Secure connection created")  # noqa
-        with pftextoutputs.PowerFactoryLogging(
-            pf_app=app,
-            add_handler=True,
-            handler_level=logging.DEBUG,
-            logger_to_use=logger,
-            formatter=pftextoutputs.PFFormatter(
-                "%(module)s: Line: %(lineno)d: %(message)s"
-            ),
-        ) as pflogger:
-            main(app)
+
+def run_main():
+    """Entry point for scheduled execution.
+
+    Returns:
+        Process exit code: EXIT_SUCCESS, EXIT_PARTIAL_FAILURE or EXIT_FATAL.
+    """
+    yaml_ini_file = r"Y:\PROTECTION\STAFF\Dan Park\PowerFactory\Dan script development\IPStoPFMastering\pf_login.yaml"
+
+    try:
+        d = get_yaml_d(yaml_ini_file)
+        import_required_pf_modules()
+
+        with produce_secured_app_instance(d, yaml_ini_file, logger=logger) as app:
+            if app is None:
+                logger.error("PowerFactory application instance is None")
+                return EXIT_FATAL
+            print("Secure connection created")  # noqa
+            with pftextoutputs.PowerFactoryLogging(
+                pf_app=app,
+                add_handler=True,
+                handler_level=logging.DEBUG,
+                logger_to_use=logger,
+                formatter=pftextoutputs.PFFormatter(
+                    "%(module)s: Line: %(lineno)d: %(message)s"
+                ),
+            ) as pflogger:
+                total, failed = main(app)
+    except Exception:
+        logger.exception("Mastering run aborted by unhandled exception")
+        return EXIT_FATAL
+
+    # Run summary
+    if total == 0:
+        logger.error("RUN SUMMARY: no projects processed")
+        return EXIT_FATAL
+    if failed:
+        logger.error(
+            f"RUN SUMMARY: {len(failed)} of {total} projects failed: "
+            f"{', '.join(failed)}"
+        )
+        return EXIT_PARTIAL_FAILURE
+    logger.info(f"RUN SUMMARY: all {total} projects completed successfully")
+    return EXIT_SUCCESS
 
 
 def main(app):
-    """ Pilot projects:
-    Atherton
-    Mossman
-    Postmans Ridge
-    Clayfield
+    """Run the full mastering pipeline and return a run summary.
+
+    Pipeline: derive latest project versions -> batch relay update
+    (IPS settings transfer + version + protection assessment per project)
+    -> share permissions.
+
+    Returns:
+        Tuple of (total_projects, failed_project_names). A total of 0
+        indicates derivation produced nothing to process, which the
+        caller should treat as a failed run.
     """
+
     app.ClearOutputWindow()
+    # Pilot mode: only the named project is derived and processed. For the
+    # full fleet run, pass pilot=None. Pilot projects:
+    # Algester, Atherton, Mossman, Postmans Ridge, Clayfield.
     all_projects = derive_latest_versions(app, pilot="Algester")
     app.ReloadProfile()
-    bru.main(app, all_projects)
+
+    if not all_projects:
+        logger.error("No projects were derived; nothing to process")
+        return 0, []
+
+    failed_projects = bru.main(app, all_projects)
     change_permissions(app, all_projects)
+    return len(all_projects), failed_projects
 
 
 def change_permissions(app, all_projects):
-    """Share the project to the Ergon Publisher"""
+    """Share the project to the Ergon Publisher
+
+    STATUS: deliberately disabled, not abandoned. The implementation below
+    is drafted but commented out pending confirmation that automated
+    sharing to ErgonPublisher is approved for the weekly run. To enable:
+    uncomment the body and verify share_g/share_a behaviour on a single
+    pilot project before a fleet run.
+    """
     pass
     # cur_user = app.GetCurrentUser()
     # user_group = cur_user.GetAttribute("fold_id").SearchObject(
@@ -91,17 +169,28 @@ def change_permissions(app, all_projects):
     # app.SetWriteCacheEnabled(0)
 
 
-def derive_latest_versions(app, pilot=False):
-    """The master folder is located under the publisher. The IPS to PF will only
-    update models whos parent folder is:
-        - Northern
-        - Southern
+def derive_latest_versions(app, pilot=None):
+    """Derive the latest version of every in-scope master project.
+
+    The master folders are located under the Publisher user. Only projects
+    whose parent folder is one of the following are updated:
+        - Regional Models\\Northern
+        - Regional Models\\Southern
         - SEQ Models
-    This function will derive the latest version of all projects under these folders.
-    To test on a single project, the name of the project is passed as pilot (str).
+
+    Derived projects are created in a fresh "Ready to Master" folder under
+    the current user (the previous run's folder is deleted first).
+
+    Args:
+        app: PowerFactory application instance.
+        pilot: Optional project name (str). If given, only the matching
+            project is derived. Raises ValueError if no project matches,
+            so a typo cannot silently produce an empty run.
+
+    Returns:
+        List of derived IntPrj objects. Master projects with no version,
+        and versions whose derivation fails, are logged and skipped.
     """
-    app.SetWriteCacheEnabled(1)
-    app.EchoOff()
     cur_user = app.GetCurrentUser()
     northern_fold = cur_user.GetAttribute("fold_id").SearchObject(
         "Publisher\\MasterProjects\\Regional Models\\Northern.IntFolder"
@@ -121,32 +210,39 @@ def derive_latest_versions(app, pilot=False):
     for folder in [northern_fold, southern_fold, seq_fold]:
         master_projects += folder.GetContents("*.IntPrj")
     if pilot:
-        master_projects = [project for project in master_projects if project.loc_name == pilot]
+        master_projects = [
+            project for project in master_projects if project.loc_name == pilot
+        ]
+        if not master_projects:
+            raise ValueError(
+                f"Pilot project '{pilot}' not found in the master folders"
+            )
+
     projects = []
-    for i, project in enumerate(master_projects):
-        if i % 10 == 0:
-            print(f"{i} projects have been derived")
-        prjt_ver = project.GetLatestVersion(0)
-        if not prjt_ver:
-            print(f"project - {project} does not have a version")
-            continue
-        projects.append(
-            prjt_ver.CreateDerivedProject(f"{project.loc_name}", derive_location)
-        )
-    app.EchoOn()
-    app.WriteChangesToDb()
-    app.SetWriteCacheEnabled(0)
+    app.SetWriteCacheEnabled(1)
+    app.EchoOff()
+    try:
+        for i, project in enumerate(master_projects):
+            if i % 10 == 0:
+                print(f"{i} projects have been derived")
+            prjt_ver = project.GetLatestVersion(0)
+            if not prjt_ver:
+                logger.warning(f"{project.loc_name} has no version; skipping")
+                continue
+            derived = prjt_ver.CreateDerivedProject(
+                f"{project.loc_name}", derive_location
+            )
+            if not derived:
+                logger.warning(
+                    f"CreateDerivedProject failed for {project.loc_name}; skipping"
+                )
+                continue
+            projects.append(derived)
+    finally:
+        app.EchoOn()
+        app.WriteChangesToDb()
+        app.SetWriteCacheEnabled(0)
     return projects
-
-
-def derive_test_project(app):
-    """ Pilot projects:
-    Atherton
-    Mossman
-    Postmans Ridge
-    Clayfield
-    """
-
 
 
 def get_yaml_d(yaml_ini_file):
@@ -181,9 +277,7 @@ def produce_secured_app_instance(d, yaml_ini_file, logger=logger):
     try:
         app = pf.GetApplicationExt(user, password, call_function)
     except pf.ExitError:
-        logger.error("Unable to get application")
-        root_logger.error("Unable to get application")
-        root_logger.exception("Unable to get application")
+        logger.exception("Unable to get application")
         raise
  
     logger.info(f"Opened {app}")
@@ -222,4 +316,4 @@ def import_required_pf_modules():
 
 
 if __name__ == "__main__":
-    run_main()
+    sys.exit(run_main())
