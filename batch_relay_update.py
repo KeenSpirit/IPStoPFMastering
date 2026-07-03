@@ -73,7 +73,18 @@ def main(app=None, all_projects=None):
                 project, f'{time.strftime("%Y%m%d")} IPS Import'
             )
             with helper.app_manager(app, gui=False) as app:
-                start.begin(app)
+                summary = start.begin(app)
+            logger.info(f"Assessment summary: {summary}")
+        except start.AssessmentError as err:
+            # Typed per-project skip raised by start.begin (e.g. missing
+            # study case). The settings transfer and version for this
+            # project completed before the assessment bailed.
+            logger.error(
+                f"Assessment skipped for {project.loc_name}: {err}"
+            )
+            print(f"*** {project.loc_name} assessment SKIPPED: {err} ***")
+            failed_projects.append(f"{project.loc_name} (assessment: {err})")
+            continue
         except Exception:
             logger.exception(
                 f"Project {project.loc_name} failed; continuing with next project"
