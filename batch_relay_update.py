@@ -24,6 +24,8 @@ import logging
 import powerfactory as pf
 import time
 import sys
+from pathlib import Path
+from typing import Optional
 
 sys.path.append(r"\\ntgcca1\ntdpe\PROTECTION\STAFF\Dan Park\PowerFactory\Dan script development\IPStoPF")
 import main as ips_to_pf
@@ -32,6 +34,15 @@ import start
 import pf_protection_helper as helper
 
 logger = logging.getLogger(__name__)
+
+# Directory for assessment result workbooks in batch runs. None
+# preserves the legacy per-user Citrix/LocalData behaviour. For
+# unattended runs this should point at the results share so weekly
+# outputs land beside the mastering run logs, rather than in the
+# task account's LocalData on the VM.
+# TODO: set to the production results directory, e.g.
+# ASSESSMENT_OUTPUT_DIR = Path(r"\\ecasd01\WksMgmt\...\AssessmentResults")
+ASSESSMENT_OUTPUT_DIR: Optional[Path] = None
 
 def main(app=None, all_projects=None):
     """Update all relays in a project"""
@@ -73,7 +84,9 @@ def main(app=None, all_projects=None):
                 project, f'{time.strftime("%Y%m%d")} IPS Import'
             )
             with helper.app_manager(app, gui=False) as app:
-                summary = start.begin(app)
+                summary = start.begin(
+                    app, output_dir=ASSESSMENT_OUTPUT_DIR
+                )
             logger.info(f"Assessment summary: {summary}")
         except start.AssessmentError as err:
             # Typed per-project skip raised by start.begin (e.g. missing

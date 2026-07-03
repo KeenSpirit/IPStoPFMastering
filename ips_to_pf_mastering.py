@@ -58,7 +58,13 @@ root_logger.setLevel(logging.DEBUG)
 root_logger.addHandler(std_out_handler)
 
 # Ensure app loggers stay at INFO so their records reach the stdout handler on root
-for name in ("ips_data", "update_powerfactory", "config", "core", "utils", "logging_config"):
+for name in (
+    "ips_data", "update_powerfactory", "config", "core", "utils",
+    "logging_config",
+    # SystemProtectionAssessment namespaces
+    "start", "fault_study", "cond_damage", "save_results", "relays",
+    "assets", "fdr_open_points",
+):
     logging.getLogger(name).setLevel(logging.INFO)
 
 
