@@ -77,17 +77,16 @@ def main(app=None, all_projects=None):
                     f"Activate() returned an error code for {project.loc_name}"
                 )
             wait_for_active_project(app, project)
-            net_mod = app.GetProjectFolder("netmod")
             app.ClearOutputWindow()
             ips_to_pf.main(app, True)
-            new_version = create_version(
-                project, f'{time.strftime("%Y%m%d")} IPS Import'
-            )
             with helper.app_manager(app, gui=False) as app:
                 summary = start.begin(
                     app, output_dir=ASSESSMENT_OUTPUT_DIR
                 )
             logger.info(f"Assessment summary: {summary}")
+            new_version = create_version(
+                project, f'{time.strftime("%Y%m%d")} IPS Import'
+            )
         except start.AssessmentError as err:
             # Typed per-project skip raised by start.begin (e.g. missing
             # study case). The settings transfer and version for this
