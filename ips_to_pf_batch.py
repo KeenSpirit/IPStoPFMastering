@@ -5,8 +5,8 @@ This module is the top of a three-repository pipeline that transfers
 protection relay settings from IPS into the PowerFactory master models
 and runs a protection assessment over the result:
 
-    IPStoPFMastering (this repo)
-        ips_to_pf_mastering.py           <- entry point (this module)
+    ProtectionBatchRunner (this repo)
+        ips_to_pf_batch.py           <- entry point (this module)
           derive_latest_versions()       derive the latest version of each
                                          master project into a fresh
                                          "Ready to Master" folder
@@ -42,6 +42,8 @@ bru = None
 PF_PYTHON_DIR = r"C:\Program Files\DIgSILENT\PowerFactory 2025 SP3\Python\3.12"
 PF_INSTALL_DIR = str(Path(PF_PYTHON_DIR).parents[1])  # ...\PowerFactory 2025 SP3
 PF_TEXT_OUTPUTS_DIR = r"\\Ecasd01\WksMgmt\PowerFactory\Scripts\pfTextOutputs"
+
+YAML_DIR = r"C:\LocalData\ProtectionBatchRunner"
 
 logger = logging.getLogger(__name__)
 logger.setLevel(logging.DEBUG)
@@ -80,7 +82,8 @@ def run_main():
     Returns:
         Process exit code: EXIT_SUCCESS, EXIT_PARTIAL_FAILURE or EXIT_FATAL.
     """
-    yaml_ini_file = r"Y:\PROTECTION\STAFF\Dan Park\PowerFactory\Dan script development\IPStoPFMastering\pf_login.yaml"
+
+    yaml_ini_file = os.path.join(YAML_DIR, "pf_login.yaml")
 
     try:
         d = get_yaml_d(yaml_ini_file)

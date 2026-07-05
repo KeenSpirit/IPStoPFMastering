@@ -1,4 +1,4 @@
-# IPStoPFMastering
+# ProtectionBatchRunner
 
 Scheduled entry point for the IPS → PowerFactory protection settings pipeline.
 This repository orchestrates two downstream repositories — **IPStoPF**
@@ -9,7 +9,7 @@ conductor damage assessment) — across the PowerFactory master-projects fleet
 ## Pipeline overview
 
 ```
-ips_to_pf_mastering.py  (run by Windows Task Scheduler)
+ips_to_pf_batch.py  (run by Windows Task Scheduler)
 │
 ├── derive_latest_versions()
 │       Derives the latest version of every master project under
@@ -35,12 +35,12 @@ the failed projects are reported in the run summary and exit code.
 
 ## Repository contents
 
-| File | Purpose |
-|---|---|
-| `ips_to_pf_mastering.py` | Entry point. Logging setup, PF login, derivation, run summary, exit codes. |
+| File                    | Purpose |
+|-------------------------|---|
+| `ips_to_pf_batch.py`    | Entry point. Logging setup, PF login, derivation, run summary, exit codes. |
 | `batch_relay_update.py` | Per-project loop: activate → transfer → version → assess. |
-| `pf_login.yaml` | PowerFactory credentials and ini file location (not in version control). |
-| `README.md` | This file. Supersedes the old `NOTES.md`. |
+| `pf_login.yaml`         | PowerFactory credentials and ini file location (not in version control). |
+| `README.md`             | This file. Supersedes the old `NOTES.md`. |
 
 ## Prerequisites
 
@@ -86,14 +86,14 @@ ini_file:  <PowerFactory ini file name>
 ```
 
 The password is stored in plain text — keep the file on the execution VM
-(convention: `C:\LocalData\BatchStudy\`) with restrictive ACLs, not on a
+(convention: `C:\LocalData\ProtectionBatchRunner\`) with restrictive ACLs, not on a
 shared drive. Never log the loaded dictionary wholesale.
 
 ### Paths hardcoded in source (update on redeployment)
 
-| Location | Constant / variable |
-|---|---|
-| `ips_to_pf_mastering.py` | `PF_PYTHON_DIR` (drives `PF_INSTALL_DIR`), `PF_TEXT_OUTPUTS_DIR`, `yaml_ini_file` |
+| Location                | Constant / variable |
+|-------------------------|---|
+| `ips_to_pf_batch.py`    | `PF_PYTHON_DIR` (drives `PF_INSTALL_DIR`), `PF_TEXT_OUTPUTS_DIR`, `yaml_ini_file` |
 | `batch_relay_update.py` | `sys.path.append(...)` for the IPStoPF and SystemProtectionAssessment repos |
 
 ### Pilot vs fleet mode
@@ -112,11 +112,11 @@ Clayfield.
 ## Running manually
 
 ```
-cd /d Y:\PROTECTION\STAFF\Dan Park\PowerFactory\Dan script development\IPStoPFMastering
-python ips_to_pf_mastering.py
+cd /d Q:\ScriptsDEV\ProtectionBatchRunner
+python ips_to_pf_batch.py
 echo %ERRORLEVEL%
 ```
-
+In the above example, Q drive is mapped to \\ecasd01\WksMgt\PowerFactory
 (`/d` allows `cd` to switch drive letters.) Expect a `RUN SUMMARY:` line at
 the end of the console output and `%ERRORLEVEL%` per the table below.
 
@@ -124,9 +124,9 @@ the end of the console output and `%ERRORLEVEL%` per the table below.
 
 Configure the task on the execution VM with:
 
-- **Action**: `python <repo path>\ips_to_pf_mastering.py`
+- **Action**: `python <repo path>\ips_to_pf_batch.py`
   Optionally redirect output as a belt-and-braces console capture:
-  `cmd /c python ips_to_pf_mastering.py >> C:\LocalData\BatchStudy\mastering_console.log 2>&1`
+  `cmd /c python ips_to_pf_batch.py >> C:\LocalData\BatchStudy\mastering_console.log 2>&1`
 - **Run whether user is logged on or not**, with an account that has PF
   licence access and network drive access (map or use UNC paths — mapped
   drive letters are not available to non-interactive tasks by default).
