@@ -79,7 +79,7 @@ def main(app=None, all_projects=None):
             wait_for_active_project(app, project)
             app.ClearOutputWindow()
             # ips_to_pf.main(app, True)
-            with helper.app_manager(app, gui=False) as app:
+            with helper.app_manager(app, gui=False, cache=True) as app:
                 summary = start.begin(
                     app, output_dir=ASSESSMENT_OUTPUT_DIR
                 )
