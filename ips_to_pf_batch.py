@@ -200,62 +200,63 @@ def derive_latest_versions(app, pilot=None):
         List of derived IntPrj objects. Master projects with no version,
         and versions whose derivation fails, are logged and skipped.
     """
+    cur_user = app.GetCurrentUser()
+    northern_fold = cur_user.GetAttribute("fold_id").SearchObject(
+        "Publisher\\MasterProjects\\Regional Models\\Northern.IntFolder"
+    )
+    southern_fold = cur_user.GetAttribute("fold_id").SearchObject(
+        "Publisher\\MasterProjects\\Regional Models\\Southern.IntFolder"
+    )
+    seq_fold = cur_user.GetAttribute("fold_id").SearchObject(
+        "Publisher\\MasterProjects\\SEQ Models"
+    )
+    for folder in cur_user.GetContents("*.IntFolder"):
+        if folder.loc_name == "Ready to Master":
+            folder.Delete()
+            break
+    derive_location = cur_user.CreateObject("IntFolder", "Ready to Master")
+    master_projects = []
+    for folder in [northern_fold, southern_fold, seq_fold]:
+        master_projects += folder.GetContents("*.IntPrj")
+    if pilot:
+        master_projects = [
+            project for project in master_projects if project.loc_name == pilot
+        ]
+        if not master_projects:
+            raise ValueError(
+                f"Pilot project '{pilot}' not found in the master folders"
+            )
+
+    # Test code for running SystemProtectionAssessment only. Delete prior to production
+    # projects = []
     # cur_user = app.GetCurrentUser()
-    # northern_fold = cur_user.GetAttribute("fold_id").SearchObject(
-    #     "Publisher\\MasterProjects\\Regional Models\\Northern.IntFolder"
-    # )
-    # southern_fold = cur_user.GetAttribute("fold_id").SearchObject(
-    #     "Publisher\\MasterProjects\\Regional Models\\Southern.IntFolder"
-    # )
-    # seq_fold = cur_user.GetAttribute("fold_id").SearchObject(
-    #     "Publisher\\MasterProjects\\SEQ Models"
-    # )
-    # for folder in cur_user.GetContents("*.IntFolder"):
-    #     if folder.loc_name == "Ready to Master":
-    #         folder.Delete()
-    #         break
-    # derive_location = cur_user.CreateObject("IntFolder", "Ready to Master")
-    # master_projects = []
-    # for folder in [northern_fold, southern_fold, seq_fold]:
-    #     master_projects += folder.GetContents("*.IntPrj")
-    # if pilot:
-    #     master_projects = [
-    #         project for project in master_projects if project.loc_name == pilot
-    #     ]
-    #     if not master_projects:
-    #         raise ValueError(
-    #             f"Pilot project '{pilot}' not found in the master folders"
-    #         )
+    # fold = cur_user.GetContents("Ready to Master.IntFolder")[0]
+    # projects += fold.GetContents("*.IntPrj")
 
     projects = []
-    cur_user = app.GetCurrentUser()
-    fold = cur_user.GetContents("Ready to Master.IntFolder")[0]
-    projects += fold.GetContents("*.IntPrj")
-
-    # projects = []
-    # app.SetWriteCacheEnabled(1)
-    # app.EchoOff()
-    # try:
-    #     for i, project in enumerate(master_projects):
-    #         if i % 10 == 0:
-    #             print(f"{i} projects have been derived")
-    #         prjt_ver = project.GetLatestVersion(0)
-    #         if not prjt_ver:
-    #             logger.warning(f"{project.loc_name} has no version; skipping")
-    #             continue
-    #         derived = prjt_ver.CreateDerivedProject(
-    #             f"{project.loc_name}", derive_location
-    #         )
-    #         if not derived:
-    #             logger.warning(
-    #                 f"CreateDerivedProject failed for {project.loc_name}; skipping"
-    #             )
-    #             continue
-    #         projects.append(derived)
-    # finally:
-    #     app.EchoOn()
-    #     app.WriteChangesToDb()
-    #     app.SetWriteCacheEnabled(0)
+    app.SetWriteCacheEnabled(1)
+    app.EchoOff()
+    try:
+        for i, project in enumerate(master_projects):
+            if i % 10 == 0:
+                print(f"{i} projects have been derived")
+            prjt_ver = project.GetLatestVersion(0)
+            if not prjt_ver:
+                logger.warning(f"{project.loc_name} has no version; skipping")
+                continue
+            derived = prjt_ver.CreateDerivedProject(
+                f"{project.loc_name}", derive_location
+            )
+            if not derived:
+                logger.warning(
+                    f"CreateDerivedProject failed for {project.loc_name}; skipping"
+                )
+                continue
+            projects.append(derived)
+    finally:
+        app.EchoOn()
+        app.WriteChangesToDb()
+        app.SetWriteCacheEnabled(0)
 
     return projects
 
