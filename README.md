@@ -125,7 +125,7 @@ the end of the console output and `%ERRORLEVEL%` per the table below.
 Configure the task on the execution VM with:
 
 - **Action**: `python <repo path>\ips_to_pf_batch.py`
-  Optionally redirect output as a belt-and-braces console capture:
+  Optionally redirect output as a console capture:
   `cmd /c python ips_to_pf_batch.py >> C:\LocalData\BatchStudy\mastering_console.log 2>&1`
 - **Run whether user is logged on or not**, with an account that has PF
   licence access and network drive access (map or use UNC paths — mapped
