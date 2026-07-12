@@ -139,7 +139,7 @@ def main(app):
     # Pilot mode: only the named project is derived and processed. For the
     # full fleet run, pass pilot=None. Pilot projects:
     # Algester, Atherton, Mossman, Postmans Ridge, Clayfield.
-    all_projects = derive_latest_versions(app, pilot="Algester")
+    all_projects = derive_latest_versions(app, pilot="Nudgee")
     app.ReloadProfile()
 
     if not all_projects:
