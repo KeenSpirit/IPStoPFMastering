@@ -52,9 +52,11 @@ logger.setLevel(logging.DEBUG)
 std_out_handler = logging.StreamHandler(sys.stdout)
 std_out_handler.setLevel(logging.DEBUG)
 std_out_handler.setFormatter(
-    logging.Formatter("%(asctime)s: %(filename)s: %(lineno)d:\t%(message)s")
+    logging.Formatter(
+        "%(asctime)s: %(filename)s: %(lineno)d:\t%(message)s",
+        datefmt="%Y-%m-%d %H:%M:%S%z",
+    )
 )
-
 root_logger = logging.getLogger()
 root_logger.setLevel(logging.DEBUG)
 root_logger.addHandler(std_out_handler)
