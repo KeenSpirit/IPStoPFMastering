@@ -138,8 +138,9 @@ def main(app):
     app.ClearOutputWindow()
     # Pilot mode: only the named project is derived and processed. For the
     # full fleet run, pass pilot=None. Pilot projects:
-    # Algester, Atherton, Mossman, Postmans Ridge, Clayfield.
-    all_projects = derive_latest_versions(app, pilot="Nudgee")
+    # Atherton (ATHE, project: Tablelands), Mossman (MOOF/MOSS, project: Tablelands),
+    # Postmans Ridge (PRG, project: Gatton-Postmans Ridge), Clayfield (CFD, project: Stafford).
+    all_projects = derive_latest_versions(app, pilot="Tablelands")
     app.ReloadProfile()
 
     if not all_projects:

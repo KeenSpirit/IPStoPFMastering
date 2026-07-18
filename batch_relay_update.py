@@ -27,9 +27,11 @@ import sys
 from pathlib import Path
 from typing import Optional
 
-sys.path.append(r"\\Ecasd01\WksMgmt\PowerFactory\ScriptsDEV\IPStoPF")
+# sys.path.append(r"\\Ecasd01\WksMgmt\PowerFactory\ScriptsDEV\IPStoPF")
+sys.path.append(r"\\ntgcca1\ntdpe\PROTECTION\STAFF\Dan Park\PowerFactory\Dan script development\IPStoPF")
 import main as ips_to_pf
-sys.path.append(r"\\Ecasd01\WksMgmt\PowerFactory\ScriptsDEV\SystemProtectionAssessment")
+# sys.path.append(r"\\Ecasd01\WksMgmt\PowerFactory\ScriptsDEV\SystemProtectionAssessment")
+sys.path.append(r"\\ntgcca1\ntdpe\PROTECTION\STAFF\Dan Park\PowerFactory\Dan script development\SystemProtectionAssessment")
 import start
 import pf_protection_helper as helper
 
