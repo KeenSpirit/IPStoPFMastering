@@ -48,7 +48,7 @@ YAML_DIR = r"C:\LocalData\ProtectionBatchRunner"
 logger = logging.getLogger(__name__)
 logger.setLevel(logging.DEBUG)
 
-# TODO remove std out logging once email logging is working
+# TODO remove std out logging once Teams logging is working
 std_out_handler = logging.StreamHandler(sys.stdout)
 std_out_handler.setLevel(logging.DEBUG)
 std_out_handler.setFormatter(
@@ -155,30 +155,27 @@ def main(app):
 
 
 def change_permissions(app, all_projects):
-    """Share the project to the Ergon Publisher
+    """Share the project to the selected group
 
-    STATUS: deliberately disabled, not abandoned. The implementation below
-    is drafted but commented out pending confirmation that automated
-    sharing to ErgonPublisher is approved for the weekly run. To enable:
-    uncomment the body and verify share_g/share_a behaviour on a single
-    pilot project before a fleet run.
     """
-    pass
-    # cur_user = app.GetCurrentUser()
-    # user_group = cur_user.GetAttribute("fold_id").SearchObject(
-    #     "Cnf\Groups\ErgonPublisher.IntGroup"
-    # )
-    # app.SetWriteCacheEnabled(1)
-    # for project in all_projects:
-    #     logger.info(project)
-    #     project.SetAttributeLength("share_g", 1)
-    #     len_share = project.GetAttributeLength("share_g")
-    #     logger.info(f"Length = {len_share}")
-    #     project.share_g = [user_group]
-    #     logger.info(project.share_g)
-    #     project.SetAttributeLength("share_a", 1)
-    #     project.share_a = [3]
-    # app.SetWriteCacheEnabled(0)
+    # selected_group = 'ErgonPublisher'
+    selected_group = 'Protection Modelling'
+
+    cur_user = app.GetCurrentUser()
+    user_group = cur_user.GetAttribute("fold_id").SearchObject(
+        f"Cnf\Groups\{selected_group}.IntGroup"
+    )
+    app.SetWriteCacheEnabled(1)
+    for project in all_projects:
+        logger.info(project)
+        project.SetAttributeLength("share_g", 1)
+        len_share = project.GetAttributeLength("share_g")
+        logger.info(f"Length = {len_share}")
+        project.share_g = [user_group]
+        logger.info(project.share_g)
+        project.SetAttributeLength("share_a", 1)
+        project.share_a = [3]
+    app.SetWriteCacheEnabled(0)
 
 
 def derive_latest_versions(app, pilot=None):
@@ -213,11 +210,7 @@ def derive_latest_versions(app, pilot=None):
     seq_fold = cur_user.GetAttribute("fold_id").SearchObject(
         "Publisher\\MasterProjects\\SEQ Models"
     )
-    for folder in cur_user.GetContents("*.IntFolder"):
-        if folder.loc_name == "Ready to Master":
-            folder.Delete()
-            break
-    derive_location = cur_user.CreateObject("IntFolder", "Ready to Master")
+
     master_projects = []
     for folder in [northern_fold, southern_fold, seq_fold]:
         master_projects += folder.GetContents("*.IntPrj")
@@ -230,16 +223,11 @@ def derive_latest_versions(app, pilot=None):
                 f"Pilot project '{pilot}' not found in the master folders"
             )
 
-    # Test code for running SystemProtectionAssessment only. Delete prior to production
-    # projects = []
-    # cur_user = app.GetCurrentUser()
-    # fold = cur_user.GetContents("Ready to Master.IntFolder")[0]
-    # projects += fold.GetContents("*.IntPrj")
-
     projects = []
     app.SetWriteCacheEnabled(1)
     app.EchoOff()
     try:
+
         for i, project in enumerate(master_projects):
             if i % 10 == 0:
                 print(f"{i} projects have been derived")

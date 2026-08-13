@@ -6,7 +6,7 @@ def main(app):
     """The intent of this script is to merge the protection users derived
     data base for the area models with the Publisher"""
     app.ClearOutputWindow()
-    current_user = app.GetCurrentUser()
+    curr ent_user = app.GetCurrentUser()
     current_script = app.GetCurrentScript()
     folder = current_script.folder
     app.PrintInfo(folder)

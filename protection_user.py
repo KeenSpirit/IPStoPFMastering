@@ -198,8 +198,7 @@ def send_email(app, body, subject, attachments = None, file_names = None):
  
 def all_relevant_objects(folders, type_of_obj, objects=None):
     """When performing a GetContents on objects outside your own user, the function
-    can take a significant amount of time. This is a quick function to perform
-    a similar type function."""
+    can take a significant amount of time. This is a quick function with a similar purpose."""
     for folder in folders:
         if not objects:
             objects = folder.GetContents(type_of_obj)
