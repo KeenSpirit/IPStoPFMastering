@@ -210,6 +210,11 @@ def derive_latest_versions(app, pilot=None):
     seq_fold = cur_user.GetAttribute("fold_id").SearchObject(
         "Publisher\\MasterProjects\\SEQ Models"
     )
+    for folder in cur_user.GetContents("*.IntFolder"):
+        if folder.loc_name == "Ready to Master":
+            folder.Delete()
+            break
+    derive_location = cur_user.CreateObject("IntFolder", "Ready to Master")
 
     master_projects = []
     for folder in [northern_fold, southern_fold, seq_fold]:
