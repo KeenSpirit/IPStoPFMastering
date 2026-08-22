@@ -67,7 +67,7 @@ def main(app=None, all_projects=None):
                 project, i + 1, len(all_projects)
             )
         )
-        print(
+        logger.info(
             "Project {} is {} of {} is being worked on".format(
                 project.loc_name, i + 1, len(all_projects)
             )

@@ -95,7 +95,7 @@ def run_main():
             if app is None:
                 logger.error("PowerFactory application instance is None")
                 return EXIT_FATAL
-            print("Secure connection created")  # noqa
+            logger.info("Secure connection created")  # noqa
             with pftextoutputs.PowerFactoryLogging(
                 pf_app=app,
                 add_handler=True,
@@ -163,7 +163,7 @@ def change_permissions(app, all_projects):
 
     cur_user = app.GetCurrentUser()
     user_group = cur_user.GetAttribute("fold_id").SearchObject(
-        f"Cnf\Groups\{selected_group}.IntGroup"
+        rf"Cnf\Groups\{selected_group}.IntGroup"
     )
     app.SetWriteCacheEnabled(1)
     for project in all_projects:
@@ -235,7 +235,7 @@ def derive_latest_versions(app, pilot=None):
 
         for i, project in enumerate(master_projects):
             if i % 10 == 0:
-                print(f"{i} projects have been derived")
+                logger.info(f"{i} projects have been derived")
             prjt_ver = project.GetLatestVersion(0)
             if not prjt_ver:
                 logger.warning(f"{project.loc_name} has no version; skipping")

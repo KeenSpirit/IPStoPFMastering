@@ -8,7 +8,7 @@ def main(app):
     app.ClearOutputWindow()
     curr ent_user = app.GetCurrentUser()
     current_script = app.GetCurrentScript()
-    folder = current_script.folder
+    folder = current_script.folder 
     app.PrintInfo(folder)
     all_projects = all_relevant_objects([folder], '*.IntPrj')
     for i, project in enumerate(all_projects):

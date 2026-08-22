@@ -9,7 +9,7 @@ sys.path.append(r"\\ecasd01\WksMgmt\PowerFactory\ScriptsLIB\AssetClasses")
 from assetclasses.corporate_data import get_cached_data
 
 
-def main():
+def cache_update():
     print("Updating the Energex Setting ID Cache")
     rows = cached_data("Report-Cache-ProtectionSettingIDs-EX")
     print("Updating the Ergon Setting ID Cache")
@@ -35,4 +35,4 @@ def cached_data(report):
 
 
 if __name__ == "__main__":
-    main()
+    cache_update()
