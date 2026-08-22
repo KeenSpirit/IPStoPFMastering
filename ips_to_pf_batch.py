@@ -142,7 +142,7 @@ def main(app):
     # full fleet run, pass pilot=None. Pilot projects:
     # Atherton (ATHE, project: Tablelands), Mossman (MOOF/MOSS, project: Tablelands),
     # Postmans Ridge (PRG, project: Gatton-Postmans Ridge), Clayfield (CFD, project: Stafford).
-    all_projects = derive_latest_versions(app, pilot="Tablelands")
+    all_projects = derive_latest_versions(app, pilot="Cleveland")
     app.ReloadProfile()
 
     if not all_projects:
