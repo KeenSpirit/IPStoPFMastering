@@ -46,6 +46,52 @@ logger = logging.getLogger(__name__)
 # ASSESSMENT_OUTPUT_DIR = Path(r"\\ecasd01\WksMgmt\...\AssessmentResults")
 ASSESSMENT_OUTPUT_DIR: Optional[Path] = None
 
+# Root of the Power BI dashboard data store, in this repository's
+# directory. Fact CSVs land in runs/<run_id>/ (accumulating history)
+# and latest_lines/ (current state); run_manifest.csv records every
+# project attempted, so the dashboard can tell "no exceptions" from
+# "did not run". None disables all dashboard output.
+DASHBOARD_DATA_DIR: Optional[Path] = (
+    Path(__file__).resolve().parent / "dashboard_data"
+)
+
+MANIFEST_COLUMNS = [
+    "run_id", "project", "status", "error",
+    "started", "finished", "duration_s",
+    "dashboard_device_rows", "dashboard_lines_csv",
+]
+
+
+def _local_timestamp() -> str:
+    """Local time with UTC offset, matching the run log convention."""
+    from datetime import datetime
+    return datetime.now().astimezone().strftime("%Y-%m-%d %H:%M:%S%z")
+
+
+def _append_manifest_row(run_dir: Path, row: dict) -> None:
+    """
+    Append one project outcome to the run manifest.
+
+    Plain append with the header written on first use - each project's
+    outcome is on disk the moment it is known, so a crash mid-fleet
+    leaves a manifest that is accurate up to the crash. Deliberately
+    implemented here rather than imported from the assessment repo:
+    both repo roots share sys.path in this process, and the manifest
+    describes the run, which only this layer can see.
+    """
+    import csv
+    run_dir.mkdir(parents=True, exist_ok=True)
+    path = run_dir / "run_manifest.csv"
+    new_file = not path.exists()
+    with open(path, "a", newline="", encoding="utf-8") as handle:
+        writer = csv.DictWriter(
+            handle, fieldnames=MANIFEST_COLUMNS,
+            restval="", extrasaction="ignore",
+        )
+        if new_file:
+            writer.writeheader()
+        writer.writerow(row)
+
 def main(app=None, all_projects=None):
     """Update all relays in a project"""
     if not app:
@@ -59,6 +105,16 @@ def main(app=None, all_projects=None):
     # Broken projects are handled per-iteration below: a failed Activate()
     # (exception or error return) is caught, logged and skipped.
     failed_projects = []
+
+    # One run id for the whole fleet pass; every project's facts and
+    # manifest row carry it, which is what lets the dashboard compare
+    # run against run.
+    run_id = time.strftime("%Y%m%d_%H%M%S")
+    run_dir = None
+    if DASHBOARD_DATA_DIR is not None:
+        run_dir = DASHBOARD_DATA_DIR / "runs" / run_id
+        logger.info(f"Dashboard run {run_id}; facts and manifest -> {run_dir}")
+
     for i, project in enumerate(all_projects):
         # app.SetGuiUpdateEnabled(1)
         app.ClearOutputWindow()
@@ -72,6 +128,9 @@ def main(app=None, all_projects=None):
                 project.loc_name, i + 1, len(all_projects)
             )
         )
+        started = _local_timestamp()
+        clock = time.perf_counter()
+        summary = None
         try:
             # app.SetGuiUpdateEnabled(0)
             if project.Activate():
@@ -83,7 +142,10 @@ def main(app=None, all_projects=None):
             ips_to_pf.main(app, True)
             with helper.app_manager(app, gui=False, cache=True) as app:
                 summary = start.begin(
-                    app, output_dir=ASSESSMENT_OUTPUT_DIR
+                    app,
+                    output_dir=ASSESSMENT_OUTPUT_DIR,
+                    dashboard_dir=DASHBOARD_DATA_DIR,
+                    dashboard_run_id=run_id,
                 )
             logger.info(f"Assessment summary: {summary}")
             new_version = create_version(
@@ -98,14 +160,54 @@ def main(app=None, all_projects=None):
             )
             print(f"*** {project.loc_name} assessment SKIPPED: {err} ***")
             failed_projects.append(f"{project.loc_name} (assessment: {err})")
+            if run_dir is not None:
+                _append_manifest_row(run_dir, {
+                    "run_id": run_id,
+                    "project": project.loc_name,
+                    "status": "ASSESSMENT_SKIPPED",
+                    "error": str(err),
+                    "started": started,
+                    "finished": _local_timestamp(),
+                    "duration_s": round(time.perf_counter() - clock, 1),
+                })
             continue
-        except Exception:
+        except Exception as err:
             logger.exception(
                 f"Project {project.loc_name} failed; continuing with next project"
             )
             print(f"*** Project {project.loc_name} FAILED - see traceback above ***")
             failed_projects.append(project.loc_name)
+            if run_dir is not None:
+                _append_manifest_row(run_dir, {
+                    "run_id": run_id,
+                    "project": project.loc_name,
+                    "status": "FAILED",
+                    "error": repr(err),
+                    "started": started,
+                    "finished": _local_timestamp(),
+                    "duration_s": round(time.perf_counter() - clock, 1),
+                })
             continue
+
+        if run_dir is not None:
+            dashboard = (
+                summary.get("dashboard") if isinstance(summary, dict) else None
+            )
+            _append_manifest_row(run_dir, {
+                "run_id": run_id,
+                "project": project.loc_name,
+                "status": "SUCCESS" if dashboard else "SUCCESS_NO_DASHBOARD",
+                "error": "",
+                "started": started,
+                "finished": _local_timestamp(),
+                "duration_s": round(time.perf_counter() - clock, 1),
+                "dashboard_device_rows": (dashboard or {}).get(
+                    "device_rows", ""
+                ),
+                "dashboard_lines_csv": (dashboard or {}).get(
+                    "lines_csv", ""
+                ),
+            })
 
     active_project = app.GetActiveProject()
     if active_project:
