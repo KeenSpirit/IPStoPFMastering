@@ -106,6 +106,11 @@ def main(app=None, all_projects=None):
     # (exception or error return) is caught, logged and skipped.
     failed_projects = []
 
+    # Cleared when PowerFactory itself dies. Every subsequent call
+    # through `app` raises once that happens, so the teardown after the
+    # loop must be skipped rather than allowed to crash out of main()
+    app_alive = True
+
     # One run id for the whole fleet pass; every project's facts and
     # manifest row carry it, which is what lets the dashboard compare
     # run against run.
@@ -171,6 +176,44 @@ def main(app=None, all_projects=None):
                     "duration_s": round(time.perf_counter() - clock, 1),
                 })
             continue
+        except pf.ExitError as err:
+            # The PowerFactory session itself has died. Every remaining
+            # project would fail on the dead handle, and any further
+            # call through `app` raises again - including the ones in
+            # this module's own cleanup. Record the outcome and stop
+            # the fleet pass deliberately, rather than crashing out
+            # through code that assumes a live application.
+            logger.exception(
+                f"PowerFactory session lost during {project.loc_name}; "
+                f"aborting the remainder of this run"
+            )
+            print(
+                f"*** PowerFactory session LOST during {project.loc_name} - "
+                f"run aborted, {len(all_projects) - i - 1} project(s) not "
+                f"attempted ***"
+            )
+            failed_projects.append(f"{project.loc_name} (PF session lost)")
+            if run_dir is not None:
+                _append_manifest_row(run_dir, {
+                    "run_id": run_id,
+                    "project": project.loc_name,
+                    "status": "PF_SESSION_LOST",
+                    "error": repr(err),
+                    "started": started,
+                    "finished": _local_timestamp(),
+                    "duration_s": round(time.perf_counter() - clock, 1),
+                })
+                for remaining in all_projects[i + 1:]:
+                    _append_manifest_row(run_dir, {
+                        "run_id": run_id,
+                        "project": remaining.loc_name,
+                        "status": "NOT_ATTEMPTED",
+                        "error": "PowerFactory session lost earlier in run",
+                        "started": "",
+                        "finished": _local_timestamp(),
+                    })
+            app_alive = False
+            break
         except Exception as err:
             logger.exception(
                 f"Project {project.loc_name} failed; continuing with next project"
@@ -185,7 +228,6 @@ def main(app=None, all_projects=None):
                     "error": repr(err),
                     "started": started,
                     "finished": _local_timestamp(),
-                    "duration_s": round(time.perf_counter() - clock, 1),
                 })
             continue
 
@@ -209,9 +251,22 @@ def main(app=None, all_projects=None):
                 ),
             })
 
-    active_project = app.GetActiveProject()
-    if active_project:
-        active_project.Deactivate()
+    if app_alive:
+        try:
+            active_project = app.GetActiveProject()
+            if active_project:
+                active_project.Deactivate()
+        except Exception:
+            logger.warning(
+                "Could not deactivate the active project during teardown; "
+                "the run summary below is still valid",
+                exc_info=True,
+            )
+    else:
+        logger.error(
+            "PowerFactory session was lost during this run; skipping "
+            "project deactivation"
+        )
 
     if failed_projects:
         print(f"{len(failed_projects)} of {len(all_projects)} projects failed:")

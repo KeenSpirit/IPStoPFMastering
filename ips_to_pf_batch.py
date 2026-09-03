@@ -150,7 +150,20 @@ def main(app):
         return 0, []
 
     failed_projects = bru.main(app, all_projects)
-    change_permissions(app, all_projects)
+
+    # Sharing is a convenience step, not part of the mastering result.
+    # bru.main has already recorded which projects were assessed; if
+    # this raises - which it will on a dead session, since it makes
+    # several calls through `app` - that summary is discarded and the
+    # run reports EXIT_FATAL instead of EXIT_PARTIAL_FAILURE.
+    try:
+        change_permissions(app, all_projects)
+    except Exception:
+        logger.exception(
+            "Sharing permissions could not be applied; the mastering "
+            "results above are unaffected"
+        )
+
     return len(all_projects), failed_projects
 
 
@@ -297,9 +310,19 @@ def produce_secured_app_instance(d, yaml_ini_file, logger=logger):
     try:
         yield app
     finally:
-        active_project = app.GetActiveProject()
-        if active_project:
-            active_project.Deactivate()
+        # Teardown must not raise. An exception thrown from a finally
+        # block replaces whatever exception is already in flight, so a
+        # dead PowerFactory session here masks the real failure.
+        try:
+            active_project = app.GetActiveProject()
+            if active_project:
+                active_project.Deactivate()
+        except Exception:
+            logger.warning(
+                "Could not deactivate the active project while closing the "
+                "PowerFactory session",
+                exc_info=True,
+            )
 
 
 def import_required_pf_modules():
