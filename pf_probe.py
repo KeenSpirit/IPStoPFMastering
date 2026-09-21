@@ -20,6 +20,15 @@ try:
     with open(os.path.join(YAML_DIR, "pf_login.yaml")) as fh:
         d = yaml.safe_load(fh)
     call = f'/ini "{d["file_dir"]}\\{d["ini_file"]}"'
+    log(f"SESSIONNAME={os.environ.get('SESSIONNAME')}")
+    log(f"USERPROFILE={os.environ.get('USERPROFILE')}")
+    log(f"APPDATA={os.environ.get('APPDATA')}")
+    log(f"LOCALAPPDATA={os.environ.get('LOCALAPPDATA')}")
+    pf_cfg = Path(os.environ.get('LOCALAPPDATA', '')) / "DIgSILENT"
+    log(f"PF user config dir exists: {pf_cfg.exists()} -> {pf_cfg}")
+    ini = Path(d['file_dir']) / d['ini_file']
+    log(f"ini exists: {ini.exists()} -> {ini}")
+    log(f"share reachable: {os.path.isdir(r'\\ecasd01\WksMgmt')}")
     log("attempting GetApplicationExt")
     app = pf.GetApplicationExt(d["user"], d["password"], call)
     log("SUCCESS - licence acquired")
