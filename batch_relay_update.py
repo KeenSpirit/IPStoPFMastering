@@ -145,6 +145,10 @@ def main(app=None, all_projects=None):
             wait_for_active_project(app, project)
             app.ClearOutputWindow()
             ips_to_pf.main(app, True)
+            new_version = create_version(
+                project, f'{time.strftime("%Y%m%d")} IPS Import'
+            )
+            logger.info(f"Version created for {project.loc_name}")
             with helper.app_manager(app, gui=False, cache=True) as app:
                 summary = start.begin(
                     app,
@@ -153,9 +157,6 @@ def main(app=None, all_projects=None):
                     dashboard_run_id=run_id,
                 )
             logger.info(f"Assessment summary: {summary}")
-            new_version = create_version(
-                project, f'{time.strftime("%Y%m%d")} IPS Import'
-            )
         except start.AssessmentError as err:
             # Typed per-project skip raised by start.begin (e.g. missing
             # study case). The settings transfer and version for this
