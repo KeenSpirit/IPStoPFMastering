@@ -235,8 +235,8 @@ def derive_latest_versions(app, pilot=None):
         master_projects += folder.GetContents("*.IntPrj")
     if pilot:
         master_projects = [
-            project for project in master_projects if project.loc_name == pilot
-        ]
+            project for project in master_projects if project.loc_name == 'Gladstone'
+        ] + [project for project in master_projects if project.loc_name == 'Beenleigh']
         if not master_projects:
             raise ValueError(
                 f"Pilot project '{pilot}' not found in the master folders"
