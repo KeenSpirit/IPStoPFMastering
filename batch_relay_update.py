@@ -30,6 +30,7 @@ from typing import Optional
 # sys.path.append(r"\\Ecasd01\WksMgmt\PowerFactory\ScriptsDEV\IPStoPF")
 sys.path.append(r"\\ntgcca1\ntdpe\PROTECTION\STAFF\Dan Park\PowerFactory\Dan script development\IPStoPF")
 import main as ips_to_pf
+from config.paths import get_protection_batch_output_dir
 # sys.path.append(r"\\Ecasd01\WksMgmt\PowerFactory\ScriptsDEV\SystemProtectionAssessment")
 sys.path.append(r"\\ntgcca1\ntdpe\PROTECTION\STAFF\Dan Park\PowerFactory\Dan script development\SystemProtectionAssessment")
 import start
@@ -37,14 +38,10 @@ import pf_protection_helper as helper
 
 logger = logging.getLogger(__name__)
 
-# Directory for assessment result workbooks in batch runs. None
-# preserves the legacy per-user Citrix/LocalData behaviour. For
-# unattended runs this should point at the results share so weekly
-# outputs land beside the mastering run logs, rather than in the
-# task account's LocalData on the VM.
-# TODO: set to the production results directory, e.g.
-# ASSESSMENT_OUTPUT_DIR = Path(r"\\ecasd01\WksMgmt\...\AssessmentResults")
-ASSESSMENT_OUTPUT_DIR: Optional[Path] = None
+# Assessment result workbooks go to the ProtectionBatchRunner output
+# folder (IPStoPF config.paths), beside the JSON run log and the transfer
+# results CSV. It is resolved per project in main(), so the folder is
+# recreated if it is removed mid-run.
 
 # Root of the Power BI dashboard data store, in this repository's
 # directory. Fact CSVs land in runs/<run_id>/ (accumulating history)
@@ -152,7 +149,7 @@ def main(app=None, all_projects=None):
             with helper.app_manager(app, gui=False, cache=True) as app:
                 summary = start.begin(
                     app,
-                    output_dir=ASSESSMENT_OUTPUT_DIR,
+                    output_dir=get_protection_batch_output_dir(),
                     dashboard_dir=DASHBOARD_DATA_DIR,
                     dashboard_run_id=run_id,
                 )
