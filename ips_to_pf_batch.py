@@ -234,9 +234,14 @@ def derive_latest_versions(app, pilot=None):
     for folder in [northern_fold, southern_fold, seq_fold]:
         master_projects += folder.GetContents("*.IntPrj")
     if pilot:
-        master_projects = [
+        master_projects = ([
             project for project in master_projects if project.loc_name == 'Gladstone'
         ] + [project for project in master_projects if project.loc_name == 'Beenleigh']
+                           + [project for project in master_projects if project.loc_name == 'Brendale']
+                           + [project for project in master_projects if project.loc_name == 'South Burnett']
+                           + [project for project in master_projects if project.loc_name == 'Richlands']
+                           + [project for project in master_projects if project.loc_name == 'Mount Isa']
+                           )
         if not master_projects:
             raise ValueError(
                 f"Pilot project '{pilot}' not found in the master folders"
