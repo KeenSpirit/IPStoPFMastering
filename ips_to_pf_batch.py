@@ -34,6 +34,9 @@ import logging
 from pathlib import Path
 from contextlib import contextmanager
 import yaml
+import re
+import keyring
+
 # Dummy place holders for global imports
 pf = None 
 pftextoutputs = None
@@ -45,10 +48,18 @@ PF_TEXT_OUTPUTS_DIR = r"\\Ecasd01\WksMgmt\PowerFactory\Scripts\pfTextOutputs"
 
 YAML_DIR = r"C:\LocalData\ProtectionBatchRunner"
 
+## Global master projects variables
+SEQ_MASTER_PROJECTS_FULL_NAME = r"\Publisher.IntUser\MasterProjects\SEQ Models"
+EE_NORTHERN_MASTER_PROJECTS_FULL_NAME = (
+    r"\Publisher.IntUser\MasterProjects\Regional Models\Northern"
+)
+EE_SOUTHERN_MASTER_PROJECTS_FULL_NAME = (
+    r"\Publisher.IntUser\MasterProjects\Regional Models\Southern"
+)
+
 logger = logging.getLogger(__name__)
 logger.setLevel(logging.DEBUG)
 
-# TODO remove std out logging once Teams logging is working
 std_out_handler = logging.StreamHandler(sys.stdout)
 std_out_handler.setLevel(logging.DEBUG)
 std_out_handler.setFormatter(
@@ -77,6 +88,29 @@ for name in (
 EXIT_SUCCESS = 0          # all projects processed successfully
 EXIT_PARTIAL_FAILURE = 1  # run completed but one or more projects failed
 EXIT_FATAL = 2            # run aborted (no app, no projects, or unhandled error)
+
+def safe_load_pf_credentials():
+    ## Get user credentials safely
+    global USER
+    global PASSWORD
+    global PF_INSTALL_DIR
+    global CALL_FUNCTION
+    global PF_PYTHON_DIR
+
+    ## Make sure credentials match user in yaml file
+    cfg = yaml.safe_load(open("config.yaml"))
+    USER = cfg["powerfactory"]["user"]
+    ## This securely gets stored password from Microsoft Credential Manager
+    PASSWORD = keyring.get_password(
+        "PowerFactory",
+        USER
+    )
+    ## Set up call function and python paths
+    PF_INSTALL_DIR = cfg["powerfactory"]["file_dir"]
+    ini_file = 'PowerFactory_PRD.ini'
+    ## This version (3.12) can be unique to the computer
+    PF_PYTHON_DIR = rf"{PF_INSTALL_DIR}\Python\3.12"
+    CALL_FUNCTION = f'/ini "{PF_INSTALL_DIR}\\{ini_file}"'
 
 
 def run_main():
@@ -146,26 +180,204 @@ def main(app):
     all_projects = derive_latest_versions(app, pilot="Cleveland")
     app.ReloadProfile()
 
+    ## Set this based on user
+    cur_user = app.GetCurrentUser()
+    global USER_DERIVED_MASTER_PROJECT
+    USER_DERIVED_MASTER_PROJECT = rf"\{cur_user.loc_name}.IntUser\MasterProjects - Derived"
+
     if not all_projects:
         logger.error("No projects were derived; nothing to process")
         return 0, []
 
-    failed_projects = bru.main(app, all_projects)
+    total, failed = workflow(app, SEQ_MASTER_PROJECTS_FULL_NAME)  ## Focus only on Stafford pilot
+    workflow(app, EE_SOUTHERN_MASTER_PROJECTS_FULL_NAME)
+    workflow(app, EE_NORTHERN_MASTER_PROJECTS_FULL_NAME)
+    return total, failed
 
-    # Sharing is a convenience step, not part of the mastering result.
+
+def workflow(app, selected_folder):
+    logger.info(f"Start {selected_folder} projects")
+    ## Use the selected_folder to determine suffix for folder structure
+    user_suffix = get_region_suffix(selected_folder)
+    current_user = app.GetCurrentUser()
+    user_folder_path = current_user.GetContents(f'{USER_DERIVED_MASTER_PROJECT}\\{user_suffix}')[0]
+    folder_contents = user_folder_path.GetContents()[31:33]
+
+    ## 1) Check derived copies exist, if not then create
+    create_region_copies(selected_folder, current_user)
+
+    ## 2) Check is derived copies are latest version, if not then update to latest
+    update_derived_models(folder_contents, app)
+
+    ## TODO ask what this does, was in Dan's original workflow
+    app.ReloadProfile()
+
+    ## 3) Run IPStoPF and SystemProtectionAsessmenet wrapper script
+    failed_projects = bru.main(app, folder_contents)
+
+    ## 4) Run SystemProtectionAsessmenet, with source impedance custom inputs
+    ## TODO separate these 2 functions out, so we can play around with the system source impedance inputs (auto/manual)
+
+    ## 5) Change permission to write for all 'Protection Modelling' users
     # bru.main has already recorded which projects were assessed; if
-    # this raises - which it will on a dead session, since it makes
-    # several calls through `app` - that summary is discarded and the
+    # this raises that summary is discarded and the
     # run reports EXIT_FATAL instead of EXIT_PARTIAL_FAILURE.
     try:
-        change_permissions(app, all_projects)
+        change_permissions(app, folder_contents)
     except Exception:
         logger.exception(
             "Sharing permissions could not be applied; the mastering "
             "results above are unaffected"
         )
 
-    return len(all_projects), failed_projects
+    return len(folder_contents), failed_projects
+
+
+def str_detect(pf_list, str_dec=r"Protection."):
+    ## detect string in powerfactory list, return location indices
+    detect_index = []
+    for index, each in enumerate(pf_list):
+        if re.search(str_dec, str(each)):
+            detect_index.append(index)
+    return (detect_index)
+
+
+def create_copies(folder_contents, user_folder_path, current_user):
+    logger.info("Start create_copies()")
+    ## Make copies from master to user
+    ## folder_contents : Publisher master projects folder contents
+    ## user_folder_path : subfolder in user directory
+    ##          (Master Projects - Derived/SEQ Models)
+    ## current_user : current_user object
+    for ii in range(len(folder_contents)):
+        # for ii in range(len(folder_contents)):
+        project = folder_contents[ii]
+        ## Name of project
+        model_name = project.loc_name
+        # print(model_name)
+        try:
+            ## Get all versions of project
+            versions = project.GetVersions()
+            ## Select the latest version to derive
+            latest_version = versions[-1]
+
+            ## Check if already exists, if so delete and derive
+            dir_options = str_detect(current_user.GetContents(), model_name)
+            if dir_options:
+                for jj in dir_options:
+                    dir_prj = current_user.GetContents()[jj]
+                    dir_prj.Delete()
+
+            if str_detect(user_folder_path.GetContents(), model_name):
+                # print(" ! copy already exists - skipping")
+                nothing = 1
+            else:
+                ## Create a derived version in user directory
+                model_copy = latest_version.CreateDerivedProject(model_name)
+
+                ## Copy into subfolder
+                user_folder_path.AddCopy(model_copy)
+
+                ## Delect copy in user directory
+                model_copy.Delete()
+                # print(" ~ completed")
+        except:
+            print(" ! something went wrong with create_copies() - skipping")
+            pass
+
+
+def get_region_suffix(selected_folder):
+    ## Use the selected_folder to determine suffix for folder structure
+    if re.search(r"SEQ Models", selected_folder):
+        user_suffix = "SEQ Models"
+    elif re.search(r"Northern", selected_folder):
+        user_suffix = "Regional Models\\Northern"
+    elif re.search(r"Southern", selected_folder):
+        user_suffix = "Regional Models\\Southern"
+    else:
+        print("error")
+        user_suffix = []
+    return user_suffix
+
+
+def create_region_copies(selected_folder, current_user):
+    logger.info("Start create_region_copies()")
+    ## Get list of all projects in selected folder (from Publisher)
+    folder = current_user.GetContents(selected_folder)[0]
+    folder_contents = folder.GetContents()
+
+    ## Create derived folder structure in user directory if doesn't exist
+    check_user_folder_exists(current_user)
+
+    user_suffix = get_region_suffix(selected_folder)
+    user_folder_path = current_user.GetContents(f'{USER_DERIVED_MASTER_PROJECT}\\{user_suffix}')[0]
+
+    ## create derived copies of master projects
+    create_copies(folder_contents, user_folder_path, current_user)  ## slow if all new
+
+
+def check_user_folder_exists(current_user):
+    logger.info("Start check_user_folder_exists()")
+    ## Check user folders exist, if not them make them
+    user_no_exists = []
+    try:
+        current_user.GetContents(USER_DERIVED_MASTER_PROJECT)[0]
+    except:
+        print("user folder doesn't exist")
+        user_no_exists = True
+        pass
+
+    if user_no_exists:
+        try:
+            ## Create MasterProjects - Derived subfolder
+            current_user.CreateObject("IntFolder", "MasterProjects - Derived")
+
+            ## Create SEQ and Regional Models subfolders
+            dir_folder = current_user.GetContents()
+            parent = str_detect(dir_folder, "MasterProjects")
+
+            dir_folder[parent[0]].CreateObject("IntFolder", "Regional Models")
+            dir_folder[parent[0]].CreateObject("IntFolder", "SEQ Models")
+
+            ## Create Southern and Northern subfolders
+            parent_folder = dir_folder[parent[0]].GetContents()
+            child = str_detect(parent_folder, "Regional")
+
+            parent_folder[child[0]].CreateObject("IntFolder", "Southern")
+            parent_folder[child[0]].CreateObject("IntFolder", "Northern")
+            print("created user folder for derived copies")
+        except:
+            print("user folder doesn't exist and can't be created")
+            pass
+
+
+def is_new_base_available(ver_obj):
+    ## Check is new base version available
+    current_ver = ver_obj.GetAttribute('der_baseversion')
+    latest_ver = ver_obj.GetAttribute('der_baseversion2')
+    if latest_ver == None:
+        ## If already most recent then der_baseversion2 is empty
+        return False
+    else:
+        return True
+
+
+def update_derived_models(folder_contents, app):
+    logger.info("Start update_derived_models()")
+    ## For each project in user folder
+    for ii in range(len(folder_contents)):
+        project = folder_contents[ii]
+        ## Check is new base version is available, then update
+        if is_new_base_available(project):
+            ## 1) Get list of derived model changes between current and latest version
+            ## TODO redo this code to get more meaningful/high level differences
+            # version_changes = get_version_changes(project, app)
+
+            ## 2) Then update model to latest version
+            project.Activate()
+            ## Discard changes in derived version, favour new base version
+            base_update = project.UpdateToMostRecentBaseVersion(0, 1, 1)
+            project.Deactivate()
 
 
 def change_permissions(app, all_projects):
@@ -192,90 +404,6 @@ def change_permissions(app, all_projects):
     app.SetWriteCacheEnabled(0)
 
 
-def derive_latest_versions(app, pilot=None):
-    """Derive the latest version of every in-scope master project.
-
-    The master folders are located under the Publisher user. Only projects
-    whose parent folder is one of the following are updated:
-        - Regional Models\\Northern
-        - Regional Models\\Southern
-        - SEQ Models
-
-    Derived projects are created in a fresh "Ready to Master" folder under
-    the current user (the previous run's folder is deleted first).
-
-    Args:
-        app: PowerFactory application instance.
-        pilot: Optional project name (str). If given, only the matching
-            project is derived. Raises ValueError if no project matches,
-            so a typo cannot silently produce an empty run.
-
-    Returns:
-        List of derived IntPrj objects. Master projects with no version,
-        and versions whose derivation fails, are logged and skipped.
-    """
-    cur_user = app.GetCurrentUser()
-    northern_fold = cur_user.GetAttribute("fold_id").SearchObject(
-        "Publisher\\MasterProjects\\Regional Models\\Northern.IntFolder"
-    )
-    southern_fold = cur_user.GetAttribute("fold_id").SearchObject(
-        "Publisher\\MasterProjects\\Regional Models\\Southern.IntFolder"
-    )
-    seq_fold = cur_user.GetAttribute("fold_id").SearchObject(
-        "Publisher\\MasterProjects\\SEQ Models"
-    )
-    for folder in cur_user.GetContents("*.IntFolder"):
-        if folder.loc_name == "Ready to Master":
-            folder.Delete()
-            break
-    derive_location = cur_user.CreateObject("IntFolder", "Ready to Master")
-
-    master_projects = []
-    for folder in [northern_fold, southern_fold, seq_fold]:
-        master_projects += folder.GetContents("*.IntPrj")
-    if pilot:
-        master_projects = ([
-            project for project in master_projects if project.loc_name == 'Gladstone'
-        ] + [project for project in master_projects if project.loc_name == 'Beenleigh']
-                           + [project for project in master_projects if project.loc_name == 'Brendale']
-                           + [project for project in master_projects if project.loc_name == 'South Burnett']
-                           + [project for project in master_projects if project.loc_name == 'Richlands']
-                           + [project for project in master_projects if project.loc_name == 'Mount Isa']
-                           )
-        if not master_projects:
-            raise ValueError(
-                f"Pilot project '{pilot}' not found in the master folders"
-            )
-
-    projects = []
-    app.SetWriteCacheEnabled(1)
-    app.EchoOff()
-    try:
-
-        for i, project in enumerate(master_projects):
-            if i % 10 == 0:
-                logger.info(f"{i} projects have been derived")
-            prjt_ver = project.GetLatestVersion(0)
-            if not prjt_ver:
-                logger.warning(f"{project.loc_name} has no version; skipping")
-                continue
-            derived = prjt_ver.CreateDerivedProject(
-                f"{project.loc_name}", derive_location
-            )
-            if not derived:
-                logger.warning(
-                    f"CreateDerivedProject failed for {project.loc_name}; skipping"
-                )
-                continue
-            projects.append(derived)
-    finally:
-        app.EchoOn()
-        app.WriteChangesToDb()
-        app.SetWriteCacheEnabled(0)
-
-    return projects
-
-
 def get_yaml_d(yaml_ini_file):
     """Get the Yaml Dictionary"""
     with open(yaml_ini_file) as yaml_f:
@@ -295,18 +423,20 @@ def get_key_from_yaml(d, key, yaml_ini_file):
 
 @contextmanager
 def produce_secured_app_instance(d, yaml_ini_file, logger=logger):
-    user = get_key_from_yaml(d, "user", yaml_ini_file)
-    password = get_key_from_yaml(d, "password", yaml_ini_file)
-    file_dir = get_key_from_yaml(d, "file_dir", yaml_ini_file)
-    ini_file = get_key_from_yaml(d, "ini_file", yaml_ini_file)
+    # user = get_key_from_yaml(d, "user", yaml_ini_file)
+    # password = get_key_from_yaml(d, "password", yaml_ini_file)
+    # file_dir = get_key_from_yaml(d, "file_dir", yaml_ini_file)
+    # ini_file = get_key_from_yaml(d, "ini_file", yaml_ini_file)
 
-    call_function = f'/ini "{file_dir}\\{ini_file}"'
- 
-    logger.info(f"Call function is {call_function}")
-    logger.info(f"user is {user}")
+    # call_function = f'/ini "{file_dir}\\{ini_file}"'
+
+    safe_load_pf_credentials()
+
+    logger.info(f"Call function is {CALL_FUNCTION}")
+    logger.info(f"user is {USER}")
  
     try:
-        app = pf.GetApplicationExt(user, password, call_function)
+        app = pf.GetApplicationExt(USER, PASSWORD, CALL_FUNCTION)
     except pf.ExitError:
         logger.exception("Unable to get application")
         raise

@@ -411,18 +411,21 @@ def safe_load_pf_credentials():
 
 @contextmanager
 def produce_secured_app_instance(d, yaml_ini_file, logger=logger):
-    user = get_key_from_yaml(d, "user", yaml_ini_file)
-    password = get_key_from_yaml(d, "password", yaml_ini_file)
-    file_dir = get_key_from_yaml(d, "file_dir", yaml_ini_file)
-    ini_file = get_key_from_yaml(d, "ini_file", yaml_ini_file)
+    # user = get_key_from_yaml(d, "user", yaml_ini_file)
+    # password = get_key_from_yaml(d, "password", yaml_ini_file)
+    # file_dir = get_key_from_yaml(d, "file_dir", yaml_ini_file)
+    # ini_file = get_key_from_yaml(d, "ini_file", yaml_ini_file)
+    #
+    # call_function = f'/ini "{file_dir}\\{ini_file}"'
 
-    call_function = f'/ini "{file_dir}\\{ini_file}"'
+    safe_load_pf_credentials()
 
-    logger.info(f"Call function is {call_function}")
-    logger.info(f"user is {user}")
+
+    logger.info(f"Call function is {CALL_FUNCTION}")
+    logger.info(f"user is {USER}")
 
     try:
-        app = pf.GetApplicationExt(user, password, call_function)
+        app = pf.GetApplicationExt(USER, PASSWORD, CALL_FUNCTION)
     except pf.ExitError:
         logger.exception("Unable to get application")
         raise
