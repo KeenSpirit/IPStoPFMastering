@@ -255,6 +255,8 @@ def create_copies(folder_contents, user_folder_path, current_user):
         ## Name of project
         model_name = project.loc_name
         # print(model_name)
+        app.SetWriteCacheEnabled(1)
+        app.EchoOff()
         try:
             ## Get all versions of project
             versions = project.GetVersions()
@@ -284,6 +286,10 @@ def create_copies(folder_contents, user_folder_path, current_user):
         except:
             print(" ! something went wrong with create_copies() - skipping")
             pass
+        finally:
+            app.EchoOn()
+            app.WriteChangesToDb()
+            app.SetWriteCacheEnabled(0)
 
 
 def get_region_suffix(selected_folder):
