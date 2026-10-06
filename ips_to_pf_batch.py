@@ -293,9 +293,12 @@ def create_copies(app, folder_contents, user_folder_path, current_user):
                 ## Delect copy in user directory
                 model_copy.Delete()
                 # print(" ~ completed")
-        except:
-            print(" ! something went wrong with create_copies() - skipping")
-            pass
+        except Exception:
+                print(f" ! something went wrong with create_copies() for {model_name} - skipping")
+                logger.exception(
+                    f"create_copies() failed for {model_name} "
+                    f"({project.GetClassName()}); skipping"
+                )
         finally:
             app.EchoOn()
             app.WriteChangesToDb()
