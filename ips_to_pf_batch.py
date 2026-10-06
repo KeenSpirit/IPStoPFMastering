@@ -120,7 +120,7 @@ def run_main():
         Process exit code: EXIT_SUCCESS, EXIT_PARTIAL_FAILURE or EXIT_FATAL.
     """
 
-    yaml_ini_file = os.path.join(YAML_DIR, "pf_login.yaml")
+    yaml_ini_file = os.path.join(YAML_DIR, "config.yaml")
 
     try:
         d = get_yaml_d(yaml_ini_file)
