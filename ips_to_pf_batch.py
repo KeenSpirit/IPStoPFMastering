@@ -202,16 +202,25 @@ def workflow(app, selected_folder):
     user_suffix = get_region_suffix(selected_folder)
     current_user = app.GetCurrentUser()
     user_folder_path = current_user.GetContents(f'{USER_DERIVED_MASTER_PROJECT}\\{user_suffix}')[0]
-    folder_contents = user_folder_path.GetContents()[31:33]
+
+    PILOT = {"Richlands", "Runcorn"}
+    pilot_filter = lambda prjs: [p for p in prjs if p.loc_name in PILOT]
 
     ## 1) Check derived copies exist, if not then create
     create_region_copies(app, selected_folder, current_user)
 
-    ## 2) Check is derived copies are latest version, if not then update to latest
-    update_derived_models(folder_contents, app)
+    ## 2) Check if derived copies are latest version, if not then update to latest
+    # Listed after step 1 so newly derived copies are included
+    update_derived_models(pilot_filter(user_folder_path.GetContents("*.IntPrj")), app)
 
     ## TODO ask what this does, was in Dan's original workflow
     app.ReloadProfile()
+
+    # Re-list AFTER step 2: UpdateToMostRecentBaseVersion replaces each
+    # updated project (the old object is renamed and recycled), so any
+    # handle taken before the update points at the recycle bin copy.
+    folder_contents = pilot_filter(user_folder_path.GetContents("*.IntPrj"))
+    logger.info(f"{len(folder_contents)} derived project(s) to process")
 
     ## 3) Run IPStoPF and SystemProtectionAsessmenet wrapper script
     failed_projects = bru.main(app, folder_contents)
