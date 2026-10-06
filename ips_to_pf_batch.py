@@ -191,8 +191,8 @@ def main(app):
         return 0, []
 
     total, failed = workflow(app, SEQ_MASTER_PROJECTS_FULL_NAME)  ## Focus only on Stafford pilot
-    workflow(app, EE_SOUTHERN_MASTER_PROJECTS_FULL_NAME)
-    workflow(app, EE_NORTHERN_MASTER_PROJECTS_FULL_NAME)
+    # workflow(app, EE_SOUTHERN_MASTER_PROJECTS_FULL_NAME)
+    # workflow(app, EE_NORTHERN_MASTER_PROJECTS_FULL_NAME)
     return total, failed
 
 
