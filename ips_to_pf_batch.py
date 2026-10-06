@@ -123,7 +123,8 @@ def run_main():
     yaml_ini_file = os.path.join(YAML_DIR, "config.yaml")
 
     try:
-        d = get_yaml_d(yaml_ini_file)
+        # d = get_yaml_d(yaml_ini_file)
+        d = None
         import_required_pf_modules()
 
         with produce_secured_app_instance(d, yaml_ini_file, logger=logger) as app:
@@ -177,7 +178,7 @@ def main(app):
     # full fleet run, pass pilot=None. Pilot projects:
     # Atherton (ATHE, project: Tablelands), Mossman (MOOF/MOSS, project: Tablelands),
     # Postmans Ridge (PRG, project: Gatton-Postmans Ridge), Clayfield (CFD, project: Stafford).
-    all_projects = derive_latest_versions(app, pilot="Cleveland")
+    # all_projects = derive_latest_versions(app, pilot="Cleveland")
     app.ReloadProfile()
 
     ## Set this based on user
@@ -185,7 +186,7 @@ def main(app):
     global USER_DERIVED_MASTER_PROJECT
     USER_DERIVED_MASTER_PROJECT = rf"\{cur_user.loc_name}.IntUser\MasterProjects - Derived"
 
-    if not all_projects:
+    if not USER_DERIVED_MASTER_PROJECT:
         logger.error("No projects were derived; nothing to process")
         return 0, []
 
@@ -204,7 +205,7 @@ def workflow(app, selected_folder):
     folder_contents = user_folder_path.GetContents()[31:33]
 
     ## 1) Check derived copies exist, if not then create
-    create_region_copies(selected_folder, current_user)
+    create_region_copies(app, selected_folder, current_user)
 
     ## 2) Check is derived copies are latest version, if not then update to latest
     update_derived_models(folder_contents, app)
@@ -242,7 +243,7 @@ def str_detect(pf_list, str_dec=r"Protection."):
     return (detect_index)
 
 
-def create_copies(folder_contents, user_folder_path, current_user):
+def create_copies(app, folder_contents, user_folder_path, current_user):
     logger.info("Start create_copies()")
     ## Make copies from master to user
     ## folder_contents : Publisher master projects folder contents
@@ -306,7 +307,7 @@ def get_region_suffix(selected_folder):
     return user_suffix
 
 
-def create_region_copies(selected_folder, current_user):
+def create_region_copies(app, selected_folder, current_user):
     logger.info("Start create_region_copies()")
     ## Get list of all projects in selected folder (from Publisher)
     folder = current_user.GetContents(selected_folder)[0]
@@ -319,7 +320,7 @@ def create_region_copies(selected_folder, current_user):
     user_folder_path = current_user.GetContents(f'{USER_DERIVED_MASTER_PROJECT}\\{user_suffix}')[0]
 
     ## create derived copies of master projects
-    create_copies(folder_contents, user_folder_path, current_user)  ## slow if all new
+    create_copies(app, folder_contents, user_folder_path, current_user)  ## slow if all new
 
 
 def check_user_folder_exists(current_user):
