@@ -11,6 +11,11 @@ For each derived project supplied by ips_to_pf_mastering, this module:
        run_state/ once both stages succeed, or deletes it if the run
        fails after activation
 
+Before step 1, an incremental precheck compares the project's inputs with
+its saved state and decides SKIP / SPA_ONLY / FULL. While PRECHECK_MODE is
+"diagnostic" the decision is only logged and written to the run manifest;
+every project still runs in full.
+
 Per-project failures are caught, logged and skipped; main() returns the
 list of failed project names for the mastering layer's run summary.
 
@@ -41,6 +46,8 @@ import start
 import pf_protection_helper as helper
 from incremental import fingerprint as fp
 from incremental import run_state
+from incremental.precheck import run_precheck
+from incremental.precheck_sources import build_sources
 from incremental.recorder import RunRecorder
 
 logger = logging.getLogger(__name__)
@@ -91,7 +98,18 @@ MANIFEST_COLUMNS = [
     "run_id", "project", "status", "error",
     "started", "finished", "duration_s",
     "dashboard_device_rows", "dashboard_lines_csv",
+    "precheck", "precheck_reasons", "precheck_s",
 ]
+
+# Incremental-run precheck, run before each project is activated:
+#   "off"         not run
+#   "diagnostic"  decision logged and written to the manifest; every
+#                 project still runs in full (current setting)
+PRECHECK_MODE = "diagnostic"
+
+# Longest precheck_reasons text written to the manifest (the full text is
+# in the run log).
+_MANIFEST_REASONS_MAX = 500
 
 
 def _local_timestamp() -> str:
@@ -152,6 +170,12 @@ def main(app=None, all_projects=None):
         run_dir = DASHBOARD_DATA_DIR / "runs" / run_id
         logger.info(f"Dashboard run {run_id}; facts and manifest -> {run_dir}")
 
+    # Incremental precheck: decisions counted for the run summary, and
+    # data sources built once per IPS region (their data is cached inside
+    # IPStoPF and reused by the transfers that follow).
+    precheck_counts = {}
+    _PRECHECK_SOURCES.clear()
+
     for i, project in enumerate(all_projects):
         # app.SetGuiUpdateEnabled(1)
         app.ClearOutputWindow()
@@ -172,6 +196,10 @@ def main(app=None, all_projects=None):
         # is read before activation, so the failure handlers below never
         # touch a possibly dead session.
         state_file, state_folder, base_version = _state_identity(project)
+        precheck_cols = _precheck(
+            app, project, state_file, state_folder, base_version,
+            precheck_counts,
+        )
         recorder = RunRecorder(project.loc_name)
         new_version = None
         try:
@@ -207,6 +235,7 @@ def main(app=None, all_projects=None):
             _invalidate_run_state(state_file, project.loc_name)
             if run_dir is not None:
                 _append_manifest_row(run_dir, {
+                    **precheck_cols,
                     "run_id": run_id,
                     "project": project.loc_name,
                     "status": "ASSESSMENT_SKIPPED",
@@ -236,6 +265,7 @@ def main(app=None, all_projects=None):
             _invalidate_run_state(state_file, project.loc_name)
             if run_dir is not None:
                 _append_manifest_row(run_dir, {
+                    **precheck_cols,
                     "run_id": run_id,
                     "project": project.loc_name,
                     "status": "PF_SESSION_LOST",
@@ -264,6 +294,7 @@ def main(app=None, all_projects=None):
             _invalidate_run_state(state_file, project.loc_name)
             if run_dir is not None:
                 _append_manifest_row(run_dir, {
+                    **precheck_cols,
                     "run_id": run_id,
                     "project": project.loc_name,
                     "status": "FAILED",
@@ -290,6 +321,7 @@ def main(app=None, all_projects=None):
                 summary.get("dashboard") if isinstance(summary, dict) else None
             )
             _append_manifest_row(run_dir, {
+                **precheck_cols,
                 "run_id": run_id,
                 "project": project.loc_name,
                 "status": "SUCCESS" if dashboard else "SUCCESS_NO_DASHBOARD",
@@ -322,6 +354,15 @@ def main(app=None, all_projects=None):
             "project deactivation"
         )
 
+    if precheck_counts:
+        logger.info(
+            "Precheck summary (diagnostic - every project ran in full): "
+            + ", ".join(
+                f"{n} would {decision}"
+                for decision, n in sorted(precheck_counts.items())
+            )
+        )
+
     if failed_projects:
         print(f"{len(failed_projects)} of {len(all_projects)} projects failed:")
         for name in failed_projects:
@@ -330,6 +371,64 @@ def main(app=None, all_projects=None):
         print(f"All {len(all_projects)} projects completed successfully")
 
     return failed_projects
+
+
+# Precheck data sources per IPS region, built on first use in a run.
+_PRECHECK_SOURCES = {}
+
+
+def _precheck(app, project, state_file, folder, base_version, counts):
+    """
+    Run the incremental precheck for one project and log the decision.
+
+    Returns the manifest columns for this project. Diagnostic only: the
+    decision changes nothing about the run. Never raises - a failure is
+    logged and recorded as FULL.
+    """
+    if PRECHECK_MODE == "off":
+        return {}
+    clock = time.perf_counter()
+    try:
+        if state_file is None:
+            decision, reasons = "FULL", ("no state file (project identity unreadable)",)
+            timing = ""
+        else:
+            region = run_state.region_for_folder(folder)
+            sources = _PRECHECK_SOURCES.get(region)
+            if sources is None:
+                sources = _PRECHECK_SOURCES[region] = build_sources(app, region)
+            outcome = run_precheck(
+                fp.load_state(state_file),
+                sources,
+                base_version=base_version,
+                version_names=[v.loc_name for v in project.GetVersions()],
+                inputs=INPUT_SNAPSHOT,
+                now=datetime.now().astimezone(),
+            )
+            decision = outcome.decision.value
+            reasons = outcome.result.reasons
+            timing = ", ".join(
+                f"{name} {secs:.1f} s"
+                for name, secs in outcome.timings.items() if secs >= 0.05
+            )
+    except Exception as exc:  # noqa: BLE001 - diagnostic must not affect the run
+        logger.warning(f"Precheck failed for {project.loc_name}", exc_info=True)
+        decision, reasons, timing = "FULL", (f"precheck failed: {exc!r}",), ""
+    elapsed = time.perf_counter() - clock
+    counts[decision] = counts.get(decision, 0) + 1
+    logger.info(
+        f"Precheck {project.loc_name}: would {decision}: "
+        f"{'; '.join(reasons)} [{timing + '; ' if timing else ''}"
+        f"{elapsed:.1f} s total]"
+    )
+    reason_text = "; ".join(reasons)
+    if len(reason_text) > _MANIFEST_REASONS_MAX:
+        reason_text = reason_text[:_MANIFEST_REASONS_MAX - 3] + "..."
+    return {
+        "precheck": decision,
+        "precheck_reasons": reason_text,
+        "precheck_s": round(elapsed, 1),
+    }
 
 
 def _state_identity(project):

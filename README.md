@@ -18,6 +18,10 @@ ips_to_pf_batch.py  (run by Windows Task Scheduler)
 │       "Ready to Master" folder. The previous run's folder is deleted.
 │
 ├── batch_relay_update.main()          ── per derived project ──
+│       ├── incremental precheck        SKIP / SPA_ONLY / FULL from the saved
+│       │                               run state; PRECHECK_MODE "diagnostic"
+│       │                               only logs it (manifest: precheck,
+│       │                               precheck_reasons, precheck_s)
 │       ├── project.Activate()          (verified by polling, not sleep)
 │       ├── IPStoPF\main.py             IPS → PF settings transfer
 │       ├── create_version()            dated version = audit record
