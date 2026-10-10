@@ -80,6 +80,8 @@ for name in (
     # SystemProtectionAssessment namespaces
     "start", "fault_study", "cond_damage", "save_results", "relays",
     "assets", "fdr_open_points",
+    # Incremental-run fingerprints (IPStoPF incremental package)
+    "incremental",
 ):
     logging.getLogger(name).setLevel(logging.INFO)
 
@@ -453,13 +455,13 @@ def produce_secured_app_instance(d, yaml_ini_file, logger=logger):
 
     logger.info(f"Call function is {CALL_FUNCTION}")
     logger.info(f"user is {USER}")
- 
+
     try:
         app = pf.GetApplicationExt(USER, PASSWORD, CALL_FUNCTION)
     except pf.ExitError:
         logger.exception("Unable to get application")
         raise
- 
+
     logger.info(f"Opened {app}")
 
     try:

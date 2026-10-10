@@ -21,9 +21,11 @@ ips_to_pf_batch.py  (run by Windows Task Scheduler)
 │       ├── project.Activate()          (verified by polling, not sleep)
 │       ├── IPStoPF\main.py             IPS → PF settings transfer
 │       ├── create_version()            dated version = audit record
-│       └── SystemProtectionAssessment\start.py (start.begin)
-│               fault level study + conductor damage assessment,
-│               run inside pf_protection_helper.app_manager
+│       ├── SystemProtectionAssessment\start.py (start.begin)
+│       │       fault level study + conductor damage assessment,
+│       │       run inside pf_protection_helper.app_manager
+│       └── run state saved to run_state\<folder>\<project>.json
+│               (incremental-run fingerprint; deleted on a failed run)
 │
 └── change_permissions()
         Share derived projects to ErgonPublisher — currently a stub,
@@ -40,6 +42,7 @@ the failed projects are reported in the run summary and exit code.
 | `ips_to_pf_batch.py`    | Entry point. Logging setup, PF login, derivation, run summary, exit codes. |
 | `batch_relay_update.py` | Per-project loop: activate → transfer → version → assess. |
 | `pf_login.yaml`         | PowerFactory credentials and ini file location (not in version control). |
+| `run_state/`            | Created at run time: one JSON per project recording its last successful run (inputs fingerprint), for incremental runs. Safe to delete - a project with no state simply runs in full. |
 | `README.md`             | This file. Supersedes the old `NOTES.md`. |
 
 ## Prerequisites
