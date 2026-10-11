@@ -190,40 +190,52 @@ def main(app):
         logger.error("No projects were derived; nothing to process")
         return 0, []
 
-    total, failed = workflow(app, SEQ_MASTER_PROJECTS_FULL_NAME)  ## Focus only on Stafford pilot
-    # workflow(app, EE_SOUTHERN_MASTER_PROJECTS_FULL_NAME)
-    # workflow(app, EE_NORTHERN_MASTER_PROJECTS_FULL_NAME)
-    return total, failed
+    total_SEQ, failed_SEQ = workflow(app, SEQ_MASTER_PROJECTS_FULL_NAME)
+    total_SOUTH, failed_SOUTH = workflow(app, EE_SOUTHERN_MASTER_PROJECTS_FULL_NAME)
+    total_NORTH, failed_NORTH = workflow(app, EE_NORTHERN_MASTER_PROJECTS_FULL_NAME)
+    return total_SEQ + total_SOUTH + total_NORTH, failed_SEQ + failed_SOUTH + failed_NORTH
 
 
 def workflow(app, selected_folder):
     logger.info(f"Start {selected_folder} projects")
-    ## Use the selected_folder to determine suffix for folder structure
-    user_suffix = get_region_suffix(selected_folder)
-    current_user = app.GetCurrentUser()
-    user_folder_path = current_user.GetContents(f'{USER_DERIVED_MASTER_PROJECT}\\{user_suffix}')[0]
 
-    PILOT = {"Richlands", "Runcorn"}
-    pilot_filter = lambda prjs: [p for p in prjs if p.loc_name in PILOT]
+    all_projects = []
+    region_projects = [
+        SEQ_MASTER_PROJECTS_FULL_NAME,
+        EE_SOUTHERN_MASTER_PROJECTS_FULL_NAME,
+        EE_NORTHERN_MASTER_PROJECTS_FULL_NAME
+    ]
+    for selected_folder in region_projects:
+        ## Use the selected_folder to determine suffix for folder structure
+        user_suffix = get_region_suffix(selected_folder)
+        current_user = app.GetCurrentUser()
+        user_folder_path = current_user.GetContents(f'{USER_DERIVED_MASTER_PROJECT}\\{user_suffix}')[0]
 
-    ## 1) Check derived copies exist, if not then create
-    create_region_copies(app, selected_folder, current_user)
+        #PILOT = {"Richlands", "Runcorn"}
+        #pilot_filter = lambda prjs: [p for p in prjs if p.loc_name in PILOT]
 
-    ## 2) Check if derived copies are latest version, if not then update to latest
-    # Listed after step 1 so newly derived copies are included
-    update_derived_models(pilot_filter(user_folder_path.GetContents("*.IntPrj")), app)
+        ## 1) Check derived copies exist, if not then create
+        create_region_copies(app, selected_folder, current_user)
 
-    ## TODO ask what this does, was in Dan's original workflow
-    app.ReloadProfile()
+        ## 2) Check if derived copies are latest version, if not then update to latest
+        # Listed after step 1 so newly derived copies are included
+        # update_derived_models(pilot_filter(user_folder_path.GetContents("*.IntPrj")), app)
+        update_derived_models(user_folder_path.GetContents("*.IntPrj"), app)
 
-    # Re-list AFTER step 2: UpdateToMostRecentBaseVersion replaces each
-    # updated project (the old object is renamed and recycled), so any
-    # handle taken before the update points at the recycle bin copy.
-    folder_contents = pilot_filter(user_folder_path.GetContents("*.IntPrj"))
-    logger.info(f"{len(folder_contents)} derived project(s) to process")
+        ## TODO ask what this does, was in Dan's original workflow
+        app.ReloadProfile()
+
+        # Re-list AFTER step 2: UpdateToMostRecentBaseVersion replaces each
+        # updated project (the old object is renamed and recycled), so any
+        # handle taken before the update points at the recycle bin copy.
+        # folder_contents = pilot_filter(user_folder_path.GetContents("*.IntPrj"))
+        folder_contents = user_folder_path.GetContents("*.IntPrj")
+
+        all_projects.extend(folder_contents)
+    logger.info(f"{len(all_projects)} derived project(s) to process")
 
     ## 3) Run IPStoPF and SystemProtectionAsessmenet wrapper script
-    failed_projects = bru.main(app, folder_contents)
+    failed_projects = bru.main(app, all_projects)
 
     ## 4) Run SystemProtectionAsessmenet, with source impedance custom inputs
     ## TODO separate these 2 functions out, so we can play around with the system source impedance inputs (auto/manual)
@@ -323,7 +335,7 @@ def create_region_copies(app, selected_folder, current_user):
     logger.info("Start create_region_copies()")
     ## Get list of all projects in selected folder (from Publisher)
     folder = current_user.GetContents(selected_folder)[0]
-    folder_contents = folder.GetContents()
+    folder_contents = folder.GetContents("*.IntPrj")
 
     ## Create derived folder structure in user directory if doesn't exist
     check_user_folder_exists(current_user)
