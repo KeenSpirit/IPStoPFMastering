@@ -192,14 +192,11 @@ def main(app):
         logger.error("No projects were derived; nothing to process")
         return 0, []
 
-    total_SEQ, failed_SEQ = workflow(app, SEQ_MASTER_PROJECTS_FULL_NAME)
-    total_SOUTH, failed_SOUTH = workflow(app, EE_SOUTHERN_MASTER_PROJECTS_FULL_NAME)
-    total_NORTH, failed_NORTH = workflow(app, EE_NORTHERN_MASTER_PROJECTS_FULL_NAME)
-    return total_SEQ + total_SOUTH + total_NORTH, failed_SEQ + failed_SOUTH + failed_NORTH
+    # workflow() derives all three regions, then runs the fleet once.
+    return workflow(app)
 
 
-def workflow(app, selected_folder):
-    logger.info(f"Start {selected_folder} projects")
+def workflow(app):
 
     all_projects = []
     region_projects = [
@@ -208,6 +205,7 @@ def workflow(app, selected_folder):
         EE_NORTHERN_MASTER_PROJECTS_FULL_NAME
     ]
     for selected_folder in region_projects:
+        logger.info(f"Start {selected_folder} projects")
         ## Use the selected_folder to determine suffix for folder structure
         user_suffix = get_region_suffix(selected_folder)
         current_user = app.GetCurrentUser()
@@ -247,14 +245,14 @@ def workflow(app, selected_folder):
     # this raises that summary is discarded and the
     # run reports EXIT_FATAL instead of EXIT_PARTIAL_FAILURE.
     try:
-        change_permissions(app, folder_contents)
+        change_permissions(app, all_projects)
     except Exception:
         logger.exception(
             "Sharing permissions could not be applied; the mastering "
             "results above are unaffected"
         )
 
-    return len(folder_contents), failed_projects
+    return len(all_projects), failed_projects
 
 
 def str_detect(pf_list, str_dec=r"Protection."):
