@@ -49,6 +49,7 @@ from incremental import run_state
 from incremental.precheck import run_precheck
 from incremental.precheck_sources import build_sources
 from incremental.recorder import RunRecorder
+from dashboard_identity import dashboard_names
 
 logger = logging.getLogger(__name__)
 
@@ -176,7 +177,15 @@ def main(app=None, all_projects=None):
     precheck_counts = {}
     _PRECHECK_SOURCES.clear()
 
+    # Dashboard project identity (#22): a name shared by projects in
+    # different region folders is qualified with the region, so their
+    # fact files and manifest rows no longer collide.
+    project_names = dashboard_names(
+        (p.loc_name, _parent_folder_name(p)) for p in all_projects
+    )
+
     for i, project in enumerate(all_projects):
+        dashboard_name = project_names[i]
         # app.SetGuiUpdateEnabled(1)
         app.ClearOutputWindow()
         app.PrintInfo(
@@ -221,6 +230,7 @@ def main(app=None, all_projects=None):
                     output_dir=get_protection_batch_output_dir(),
                     dashboard_dir=DASHBOARD_DATA_DIR,
                     dashboard_run_id=run_id,
+                    dashboard_project_name=dashboard_name,
                 )
             logger.info(f"Assessment summary: {summary}")
         except start.AssessmentError as err:
@@ -237,7 +247,7 @@ def main(app=None, all_projects=None):
                 _append_manifest_row(run_dir, {
                     **precheck_cols,
                     "run_id": run_id,
-                    "project": project.loc_name,
+                    "project": dashboard_name,
                     "status": "ASSESSMENT_SKIPPED",
                     "error": str(err),
                     "started": started,
@@ -267,17 +277,17 @@ def main(app=None, all_projects=None):
                 _append_manifest_row(run_dir, {
                     **precheck_cols,
                     "run_id": run_id,
-                    "project": project.loc_name,
+                    "project": dashboard_name,
                     "status": "PF_SESSION_LOST",
                     "error": repr(err),
                     "started": started,
                     "finished": _local_timestamp(),
                     "duration_s": round(time.perf_counter() - clock, 1),
                 })
-                for remaining in all_projects[i + 1:]:
+                for remaining_name in project_names[i + 1:]:
                     _append_manifest_row(run_dir, {
                         "run_id": run_id,
-                        "project": remaining.loc_name,
+                        "project": remaining_name,
                         "status": "NOT_ATTEMPTED",
                         "error": "PowerFactory session lost earlier in run",
                         "started": "",
@@ -296,7 +306,7 @@ def main(app=None, all_projects=None):
                 _append_manifest_row(run_dir, {
                     **precheck_cols,
                     "run_id": run_id,
-                    "project": project.loc_name,
+                    "project": dashboard_name,
                     "status": "FAILED",
                     "error": repr(err),
                     "started": started,
@@ -323,7 +333,7 @@ def main(app=None, all_projects=None):
             _append_manifest_row(run_dir, {
                 **precheck_cols,
                 "run_id": run_id,
-                "project": project.loc_name,
+                "project": dashboard_name,
                 "status": "SUCCESS" if dashboard else "SUCCESS_NO_DASHBOARD",
                 "error": "",
                 "started": started,
@@ -429,6 +439,14 @@ def _precheck(app, project, state_file, folder, base_version, counts):
         "precheck_reasons": reason_text,
         "precheck_s": round(elapsed, 1),
     }
+
+
+def _parent_folder_name(project):
+    """Name of a project's parent (region) folder, or None if unreadable."""
+    try:
+        return project.GetParent().loc_name
+    except Exception:
+        return None
 
 
 def _state_identity(project):
