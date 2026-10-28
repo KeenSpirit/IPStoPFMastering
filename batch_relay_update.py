@@ -187,12 +187,12 @@ def main(app=None, all_projects=None):
     for i, project in enumerate(all_projects):
         dashboard_name = project_names[i]
         # app.SetGuiUpdateEnabled(1)
-        app.ClearOutputWindow()
-        app.PrintInfo(
-            "Project {} is {} of {} is being worked on".format(
-                project, i + 1, len(all_projects)
-            )
-        )
+        # The ClearOutputWindow / PrintInfo calls that used to sit here
+        # are inside the try below: they are the first PowerFactory calls
+        # of each project, so a session that died at the end of the
+        # previous one failed here, outside every handler, and ended the
+        # run with no PF_SESSION_LOST / NOT_ATTEMPTED manifest rows
+        # (2026-10-28).
         logger.info(
             "Project {} is {} of {} is being worked on".format(
                 project.loc_name, i + 1, len(all_projects)
@@ -212,6 +212,12 @@ def main(app=None, all_projects=None):
         recorder = RunRecorder(project.loc_name)
         new_version = None
         try:
+            app.ClearOutputWindow()
+            app.PrintInfo(
+                "Project {} is {} of {} is being worked on".format(
+                    project, i + 1, len(all_projects)
+                )
+            )
             # app.SetGuiUpdateEnabled(0)
             if project.Activate():
                 raise RuntimeError(
@@ -224,7 +230,11 @@ def main(app=None, all_projects=None):
                 project, f'{time.strftime("%Y%m%d")} IPS Import'
             )
             logger.info(f"Version created for {project.loc_name}")
-            with helper.app_manager(app, gui=False, cache=True) as app:
+            # The recycle bin is emptied once at the end of the run, not
+            # after every project (see _clear_recycle_bin_once).
+            with helper.app_manager(
+                    app, gui=False, cache=True, clear_recycle_bin=False
+            ) as app:
                 summary = start.begin(
                     app,
                     output_dir=get_protection_batch_output_dir(),
@@ -358,6 +368,7 @@ def main(app=None, all_projects=None):
                 "the run summary below is still valid",
                 exc_info=True,
             )
+        _clear_recycle_bin_once(app)
     else:
         logger.error(
             "PowerFactory session was lost during this run; skipping "
@@ -382,8 +393,34 @@ def main(app=None, all_projects=None):
 
     return failed_projects
 
+def _clear_recycle_bin_once(app):
+    """
+    Empty the PowerFactory recycle bin once, after every project has run.
+
+    Housekeeping only: the bin holds what this run deleted, including
+    the old derived copies the mastering step replaced, so it grows
+    every run if never emptied. It used to be emptied by SPA's
+    app_manager after every project; on 2026-10-28 PowerFactory died
+    inside that call at the end of the first project and the other 79
+    were never attempted. Here, with every manifest row already written,
+    a failure (even a dead session) costs nothing but the purge.
+    """
+    clock = time.perf_counter()
+    try:
+        app.ClearRecycleBin()
+    except Exception:
+        logger.warning(
+            "ClearRecycleBin failed at the end of the run; the recycle "
+            "bin was left as-is (empty it by hand in the Data Manager)",
+            exc_info=True,
+        )
+        return
+    logger.info(
+        f"Recycle bin emptied in {time.perf_counter() - clock:.1f} s"
+    )
 
 # Precheck data sources per IPS region, built on first use in a run.
+
 _PRECHECK_SOURCES = {}
 
 
