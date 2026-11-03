@@ -399,11 +399,7 @@ def _clear_recycle_bin_once(app):
 
     Housekeeping only: the bin holds what this run deleted, including
     the old derived copies the mastering step replaced, so it grows
-    every run if never emptied. It used to be emptied by SPA's
-    app_manager after every project; on 2026-10-28 PowerFactory died
-    inside that call at the end of the first project and the other 79
-    were never attempted. Here, with every manifest row already written,
-    a failure (even a dead session) costs nothing but the purge.
+    every run if never emptied.
     """
     clock = time.perf_counter()
     try:
