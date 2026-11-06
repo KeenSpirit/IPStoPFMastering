@@ -43,6 +43,8 @@ from config.paths import get_protection_batch_output_dir
 # sys.path.append(r"\\Ecasd01\WksMgmt\PowerFactory\ScriptsDEV\SystemProtectionAssessment")
 sys.path.append(r"\\ntgcca1\ntdpe\PROTECTION\STAFF\Dan Park\PowerFactory\Dan script development\SystemProtectionAssessment")
 import start
+# Import SPA's full analysis stack now, before INPUT_SNAPSHOT is taken below
+start.preload_analysis_modules()
 import pf_protection_helper as helper
 from incremental import fingerprint as fp
 from incremental import run_state
