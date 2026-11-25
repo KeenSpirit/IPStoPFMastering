@@ -35,10 +35,11 @@ from pathlib import Path
 from contextlib import contextmanager
 import yaml
 import re
+import time
 import keyring
 
 # Dummy place holders for global imports
-pf = None 
+pf = None
 pftextoutputs = None
 bru = None
 # PowerFactory runtime + helper module locations (single source of truth)
@@ -199,6 +200,7 @@ def main(app):
 def workflow(app):
 
     all_projects = []
+    update_failed = []
     region_projects = [
         SEQ_MASTER_PROJECTS_FULL_NAME,
         EE_SOUTHERN_MASTER_PROJECTS_FULL_NAME,
@@ -220,7 +222,9 @@ def workflow(app):
         ## 2) Check if derived copies are latest version, if not then update to latest
         # Listed after step 1 so newly derived copies are included
         # update_derived_models(pilot_filter(user_folder_path.GetContents("*.IntPrj")), app)
-        update_derived_models(user_folder_path.GetContents("*.IntPrj"), app)
+        region_failures = update_derived_models(
+            user_folder_path.GetContents("*.IntPrj"), app
+        )
 
         ## TODO ask what this does, was in Dan's original workflow
         app.ReloadProfile()
@@ -231,7 +235,14 @@ def workflow(app):
         # folder_contents = pilot_filter(user_folder_path.GetContents("*.IntPrj"))
         folder_contents = user_folder_path.GetContents("*.IntPrj")
 
-        all_projects.extend(folder_contents)
+        # A copy whose base version update failed is in an unknown state:
+        # leave it out of the fleet pass and report it as failed.
+        skip = {name for name, _ in region_failures}
+        all_projects.extend(p for p in folder_contents if p.loc_name not in skip)
+        update_failed.extend(
+            f"{name} (base version update: {reason})"
+            for name, reason in region_failures
+        )
     logger.info(f"{len(all_projects)} derived project(s) to process")
 
     ## 3) Run IPStoPF and SystemProtectionAsessmenet wrapper script
@@ -252,7 +263,7 @@ def workflow(app):
             "results above are unaffected"
         )
 
-    return len(all_projects), failed_projects
+    return len(all_projects) + len(update_failed), update_failed + failed_projects
 
 
 def str_detect(pf_list, str_dec=r"Protection."):
@@ -382,33 +393,100 @@ def check_user_folder_exists(current_user):
             pass
 
 
-def is_new_base_available(ver_obj):
-    ## Check is new base version available
-    current_ver = ver_obj.GetAttribute('der_baseversion')
-    latest_ver = ver_obj.GetAttribute('der_baseversion2')
-    if latest_ver == None:
-        ## If already most recent then der_baseversion2 is empty
-        return False
-    else:
-        return True
+def _version_name(version):
+    """Name of a base version object for the log."""
+    return version.loc_name if version else "none"
 
 
 def update_derived_models(folder_contents, app):
-    logger.info("Start update_derived_models()")
-    ## For each project in user folder
-    for ii in range(len(folder_contents)):
-        project = folder_contents[ii]
-        ## Check is new base version is available, then update
-        if is_new_base_available(project):
-            ## 1) Get list of derived model changes between current and latest version
-            ## TODO redo this code to get more meaningful/high level differences
-            # version_changes = get_version_changes(project, app)
+    """
+    Bring each derived copy up to the newest base version of its master.
 
-            ## 2) Then update model to latest version
-            project.Activate()
+    A project that cannot be read, activated or updated is logged and
+    skipped, and the rest of the region still runs. A lost PowerFactory
+    session (pf.ExitError) is not caught: nothing after it can work.
+
+    Returns:
+        List of (project name, reason) for the projects that failed. The
+        caller leaves these out of the fleet pass and reports them.
+    """
+    logger.info(
+        f"Start update_derived_models(): {len(folder_contents)} project(s)"
+    )
+    region_clock = time.perf_counter()
+    failures = []
+    attempted = 0
+    for project in folder_contents:
+        name = "<name unreadable>"
+        activated = False
+        clock = time.perf_counter()
+        try:
+            name = project.loc_name
+            folder = project.GetParent()
+            old_base = _version_name(project.GetAttribute("der_baseversion"))
+            ## der_baseversion2 is empty when the copy is already on the
+            ## most recent base version
+            new_base = project.GetAttribute("der_baseversion2")
+            if new_base is None:
+                logger.info(f"Base version {name}: up to date ({old_base})")
+                continue
+            expected = _version_name(new_base)
+
+            if project.Activate():
+                raise RuntimeError("Activate() returned an error code")
+            activated = True
+            attempted += 1
             ## Discard changes in derived version, favour new base version
-            base_update = project.UpdateToMostRecentBaseVersion(0, 1, 1)
-            project.Deactivate()
+            return_code = project.UpdateToMostRecentBaseVersion(0, 1, 1)
+
+            # The update replaces the project object, so read the result
+            # from the folder, not from the handle taken before it.
+            current = folder.GetContents(f"{name}.IntPrj")
+            if current:
+                now_base = _version_name(
+                    current[0].GetAttribute("der_baseversion")
+                )
+                pending = current[0].GetAttribute("der_baseversion2")
+            else:
+                now_base, pending = "project not found after update", None
+            message = (
+                f"Base version {name}: {old_base} -> {now_base} "
+                f"(expected {expected}) in "
+                f"{time.perf_counter() - clock:.1f} s, "
+                f"return code {return_code}"
+            )
+            if return_code or not current or pending is not None:
+                logger.warning(f"{message}; update not confirmed")
+            else:
+                logger.info(message)
+        except pf.ExitError:
+            raise
+        except Exception as exc:
+            logger.exception(
+                f"Base version update failed for {name} after "
+                f"{time.perf_counter() - clock:.1f} s; project skipped"
+            )
+            failures.append((name, f"{type(exc).__name__}: {exc}"))
+        finally:
+            if activated:
+                # Must not raise: an exception from a finally block
+                # replaces the one already in flight.
+                try:
+                    active = app.GetActiveProject()
+                    if active:
+                        active.Deactivate()
+                except Exception:
+                    logger.warning(
+                        f"Could not deactivate {name} after its base "
+                        f"version update",
+                        exc_info=True,
+                    )
+    logger.info(
+        f"update_derived_models(): {len(folder_contents)} checked, "
+        f"{attempted} update(s) attempted, {len(failures)} failed in "
+        f"{time.perf_counter() - region_clock:.1f} s"
+    )
+    return failures
 
 
 def change_permissions(app, all_projects):
