@@ -3,13 +3,16 @@ Batch relay update - per-project loop of the mastering pipeline.
 
 For each derived project supplied by ips_to_pf_mastering, this module:
     1. Activates the project (with activation verified by polling)
-    2. Runs the IPStoPF settings transfer (ips_to_pf.main)
+    2. Runs the IPStoPF settings transfer (ips_to_pf.main). A transfer
+       that does not start (TransferSkipped, or a None return) ends the
+       project there: no version, no assessment, manifest status
+       TRANSFER_SKIPPED
     3. Creates a dated version as the audit record of the import
     4. Runs the SystemProtectionAssessment (start.begin) inside
        helper.app_manager so calculation/echo/GUI state is initialised
     5. Saves the project's run state (incremental-run fingerprint) to
        run_state/ once both stages succeed, or deletes it if the run
-       fails after activation
+       fails or is skipped after activation
 
 Before step 1, an incremental precheck compares the project's inputs with
 its saved state and decides SKIP / SPA_ONLY / FULL. While PRECHECK_MODE is
@@ -39,6 +42,10 @@ from typing import Optional
 # sys.path.append(r"\\Ecasd01\WksMgmt\PowerFactory\ScriptsDEV\IPStoPF")
 sys.path.append(r"\\ntgcca1\ntdpe\PROTECTION\STAFF\Dan Park\PowerFactory\Dan script development\IPStoPF")
 import main as ips_to_pf
+# Bound at import so an IPStoPF copy that predates TransferSkipped stops
+# the run here, before any project is touched, and not inside an except
+# clause part-way through the fleet.
+TransferSkipped = ips_to_pf.TransferSkipped
 from config.paths import get_protection_batch_output_dir
 # sys.path.append(r"\\Ecasd01\WksMgmt\PowerFactory\ScriptsDEV\SystemProtectionAssessment")
 sys.path.append(r"\\ntgcca1\ntdpe\PROTECTION\STAFF\Dan Park\PowerFactory\Dan script development\SystemProtectionAssessment")
@@ -97,6 +104,15 @@ DASHBOARD_DATA_DIR: Optional[Path] = (
     Path(__file__).resolve().parent / "dashboard_data"
 )
 
+# Manifest status values, one row per project:
+#   SUCCESS               transferred, versioned, assessed, facts written
+#   SUCCESS_NO_DASHBOARD  as SUCCESS, but the assessment wrote no facts
+#   TRANSFER_SKIPPED      the transfer did not start (reason in `error`);
+#                         not versioned, not assessed, model untouched
+#   ASSESSMENT_SKIPPED    transferred and versioned; assessment not run
+#   FAILED                an exception during the transfer or assessment
+#   PF_SESSION_LOST       PowerFactory died during this project
+#   NOT_ATTEMPTED         after a lost session
 MANIFEST_COLUMNS = [
     "run_id", "project", "status", "error",
     "started", "finished", "duration_s",
@@ -227,7 +243,15 @@ def main(app=None, all_projects=None):
                 )
             wait_for_active_project(app, project)
             app.ClearOutputWindow()
-            ips_to_pf.main(app, True, recorder=recorder)
+            transferred = ips_to_pf.main(app, True, recorder=recorder)
+            if transferred is None:
+                # Called from here, ips_to_pf.main returns True/False or
+                # raises. None is its interactive "stopped early" value:
+                # never read it as a completed transfer.
+                raise TransferSkipped(
+                    "ips_to_pf.main returned None: no transfer was run "
+                    "(the reason is in the log lines above)"
+                )
             new_version = create_version(
                 project, f'{time.strftime("%Y%m%d")} IPS Import'
             )
@@ -245,6 +269,34 @@ def main(app=None, all_projects=None):
                     dashboard_project_name=dashboard_name,
                 )
             logger.info(f"Assessment summary: {summary}")
+        except TransferSkipped as err:
+            # The transfer did not start (invalid batch configuration,
+            # subtransmission project): the model is as it was before
+            # this run. No "IPS Import" version and no assessment -
+            # either would present an untransferred model as this
+            # week's result.
+            logger.error(
+                f"Transfer skipped for {project.loc_name}: {err}; "
+                f"project not versioned or assessed"
+            )
+            print(f"*** {project.loc_name} transfer SKIPPED: {err} ***")
+            failed_projects.append(f"{project.loc_name} (transfer: {err})")
+            _invalidate_run_state(
+                state_file, project.loc_name,
+                why="its latest run did not transfer settings",
+            )
+            if run_dir is not None:
+                _append_manifest_row(run_dir, {
+                    **precheck_cols,
+                    "run_id": run_id,
+                    "project": dashboard_name,
+                    "status": "TRANSFER_SKIPPED",
+                    "error": str(err),
+                    "started": started,
+                    "finished": _local_timestamp(),
+                    "duration_s": round(time.perf_counter() - clock, 1),
+                })
+            continue
         except start.AssessmentError as err:
             # Typed per-project skip raised by start.begin (e.g. missing
             # study case). The settings transfer and version for this
@@ -552,13 +604,13 @@ def _save_run_state(
         run_state.invalidate_state(state_file)
 
 
-def _invalidate_run_state(state_file, project_name):
-    """Delete a project's saved state after a failed run."""
+def _invalidate_run_state(
+    state_file, project_name,
+    why="the failed run may have changed the model",
+):
+    """Delete a project's saved state after a failed or skipped run."""
     if state_file is not None and run_state.invalidate_state(state_file):
-        logger.info(
-            f"Run state removed for {project_name}: the failed run may have "
-            f"changed the model"
-        )
+        logger.info(f"Run state removed for {project_name}: {why}")
 
 
 def wait_for_active_project(app, project, timeout_s=20.0, poll_s=0.5):

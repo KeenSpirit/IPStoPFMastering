@@ -23,7 +23,10 @@ ips_to_pf_batch.py  (run by Windows Task Scheduler)
 │       │                               only logs it (manifest: precheck,
 │       │                               precheck_reasons, precheck_s)
 │       ├── project.Activate()          (verified by polling, not sleep)
-│       ├── IPStoPF\main.py             IPS → PF settings transfer
+│       ├── IPStoPF\main.py             IPS → PF settings transfer; if it
+│       │                               does not start (TransferSkipped) the
+│       │                               project stops here: no version, no
+│       │                               assessment, manifest TRANSFER_SKIPPED
 │       ├── create_version()            dated version = audit record
 │       ├── SystemProtectionAssessment\start.py (start.begin)
 │       │       fault level study + conductor damage assessment,
@@ -180,6 +183,11 @@ wrapper (see roadmap).
    project fails to activate (verify it opens interactively), settings
    transfer errors (see IPStoPF log), assessment errors (see per-feeder
    progress lines to locate the stalling feeder).
+   A project listed as `<name> (transfer: <reason>)` was not transferred,
+   versioned or assessed (`Transfer skipped for <name>` in the log,
+   `TRANSFER_SKIPPED` in `run_manifest.csv`): the batch configuration
+   failed validation (a missing mapping file or path - the reason names
+   it), or the project is a subtransmission model.
 3. **Exit 2**: the traceback at the end of the log identifies the abort
    point — credentials/licence (`Unable to get application`), pilot typo
    (`ValueError`), or empty derivation (`no projects processed`).
